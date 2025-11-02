@@ -1,13 +1,15 @@
+// pages/index.js
 import React, { useMemo, useState, useEffect } from "react";
+import { useRouter } from "next/router";
 
 /**
- * ROXO SABOR — CARDÁPIO DIGITAL (Single-file React)
+ * ROXO SABOR — CARDÁPIO DIGITAL (Next.js + Tailwind)
  * -------------------------------------------------
  * ✔️ Tema claro/escuro (persistente)
- * ✔️ Cupom / Raspadinha digital (campo + aplicação de desconto)
- * ✔️ Carrinho fixo NA PÁGINA (sem flutuar)
- * ✔️ WhatsApp com mensagem automática
- * ✔️ Atalho iFood, categorias, busca, adicionais e tamanhos
+ * ✔️ Cupom / Raspadinha digital (campo + desconto)
+ * ✔️ Carrinho fixo na página
+ * ✔️ Checkout Mercado Pago (PIX/Cartão) — SEM iFood
+ * ✔️ Confirma “Pedido confirmado” ao voltar de ?pago=sucesso
  */
 
 // ====== CONFIGURAÇÕES DE MARCA E LOJA ======
@@ -28,23 +30,21 @@ const BRAND = {
 };
 
 const STORE = {
-  whatsapp: "+55 31 993006358", // <-- COLOQUE SEU NÚMERO AQUI
+  whatsapp: "+55 31 993006358", // para contato, mas não é usado para pedir
   instagram: "@roxosaboroficial",
-  ifoodUrl: "https://www.ifood.com.br/", // <-- SUBSTITUA PELO LINK DA SUA LOJA
   deliveryHours: "Todos os dias, 14h às 23h",
   raspadinhaCopy:
     "Raspou, achou, ganhou! Digite seu código para validar seu prêmio.",
 };
 
-// Códigos de raspadinha/cupom (exemplo)
-// type:"percent" aplica % no subtotal; type:"msg" apenas exibe mensagem (ex.: frete grátis)
+// Códigos de raspadinha/cupom
 const COUPONS = {
   ROXO10: { type: "percent", value: 10, label: "10% de desconto aplicado" },
   FRETEGRATIS: { type: "msg", label: "Frete grátis na próxima compra!" },
   ADICIONAL: { type: "msg", label: "Um adicional grátis no próximo açaí!" },
 };
 
-// ====== DADOS DO CARDÁPIO (exemplo — edite à vontade) ======
+// ====== DADOS DO CARDÁPIO ======
 const CATEGORIES = [
   { id: "promos", name: "Promoções" },
   { id: "acai", name: "Açaí no Copo" },
@@ -119,38 +119,25 @@ const PRODUCTS = [
 ];
 
 // ====== HELPERS ======
-const currency = (n) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-
-const buildWhatsAppLink = ({ cart, note, total, couponCode }) => {
-  const number = STORE.whatsapp.replace(/\D/g, "");
-  const lines = [
-    `🍧 *${BRAND.name}* — Novo Pedido`,
-    "",
-    ...cart.map((i, idx) => {
-      const addons = i.addons?.length
-        ? `\n  • Adicionais: ${i.addons.map((a) => a.name).join(", ")}`
-        : "";
-      const size = i.size ? ` (${i.size.label})` : "";
-      return `${idx + 1}. ${i.name}${size} — ${currency(i.subtotal)}${addons}`;
-    }),
-    "",
-    couponCode ? `Cupom/Raspadinha: ${couponCode}` : "",
-    `Total: *${currency(total)}*`,
-    note ? `\nObservações: ${note}` : "",
-    `Origem: Cardápio Digital ${BRAND.name}`,
-  ]
-    .filter(Boolean)
-    .join("\n");
-  return `https://wa.me/${number}?text=${encodeURIComponent(lines)}`;
-};
+const currency = (n) =>
+  n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 // ====== COMPONENTE PRINCIPAL ======
 export default function RoxoSaborMenu() {
-  // Tema
-  const [theme, setTheme] = useState(() => localStorage.getItem("themeRS") || "dark");
+  const router = useRouter();
+
+  // Tema (persistência segura no client)
+  const [theme, setTheme] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("themeRS") || "dark";
+    }
+    return "dark";
+  });
+
   useEffect(() => {
-    document.documentElement.classList.toggle("dark", theme === "dark");
-    localStorage.setItem("themeRS", theme);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("themeRS", theme);
+    }
   }, [theme]);
 
   const [query, setQuery] = useState("");
@@ -158,19 +145,39 @@ export default function RoxoSaborMenu() {
   const [cart, setCart] = useState([]);
   const [note, setNote] = useState("");
 
+  // dados do cliente para o checkout
+  const [customer, setCustomer] = useState({
+    name: "",
+    phone: "",
+    address: "",
+  });
+
   // Cupom
   const [couponCode, setCouponCode] = useState("");
   const [couponInfo, setCouponInfo] = useState(null);
 
+  // Alerta de sucesso ao retornar do Mercado Pago
+  useEffect(() => {
+    if (router.query.pago === "sucesso") {
+      alert("✅ Pedido confirmado! Você receberá o resumo no WhatsApp.");
+    }
+  }, [router.query.pago]);
+
   const filtered = useMemo(() => {
-    return PRODUCTS.filter((p) =>
-      (category ? p.category === category : true) &&
-      (query ? (p.name + " " + (p.desc || "")).toLowerCase().includes(query.toLowerCase()) : true)
+    return PRODUCTS.filter(
+      (p) =>
+        (category ? p.category === category : true) &&
+        (query
+          ? (p.name + " " + (p.desc || ""))
+              .toLowerCase()
+              .includes(query.toLowerCase())
+          : true)
     );
   }, [category, query]);
 
   const subtotal = cart.reduce((s, i) => s + i.subtotal, 0);
-  const discount = couponInfo?.type === "percent" ? (subtotal * couponInfo.value) / 100 : 0;
+  const discount =
+    couponInfo?.type === "percent" ? (subtotal * couponInfo.value) / 100 : 0;
   const total = Math.max(0, subtotal - discount);
 
   function addToCart(product, { size, addons = [] } = {}) {
@@ -207,12 +214,42 @@ export default function RoxoSaborMenu() {
     else setCouponInfo({ type: "msg", label: "Código inválido ou já utilizado." });
   }
 
+  // ====== CHECKOUT MERCADO PAGO ======
+  async function checkoutMP() {
+    try {
+      if (!cart.length) return;
+      if (!customer.name || !customer.phone || !customer.address) {
+        alert("Preencha nome, telefone e endereço para continuar.");
+        return;
+      }
+      const body = {
+        cart,
+        total: Number(subtotal.toFixed(2)),
+        note,
+        customer, // será lido pela webhook como metadata
+      };
+      const r = await fetch("/api/create-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await r.json();
+      if (data?.url) window.location.href = data.url;
+      else alert("Não foi possível iniciar o pagamento.");
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao iniciar pagamento.");
+    }
+  }
+
   return (
     <div className="min-h-screen text-[15px] bg-[--bg] text-[--fg] transition-colors">
       {/* HEADER */}
       <header className="sticky top-0 z-50 backdrop-blur supports-[backdrop-filter]:bg-black/40 bg-black/20 border-b border-white/10">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-500 to-fuchsia-600 grid place-items-center font-extrabold">🫐</div>
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-500 to-fuchsia-600 grid place-items-center font-extrabold">
+            🫐
+          </div>
           <div className="mr-auto">
             <div className="text-sm opacity-80">{BRAND.name}</div>
             <div className="text-xs opacity-60">{STORE.deliveryHours}</div>
@@ -226,15 +263,9 @@ export default function RoxoSaborMenu() {
           </button>
 
           <a
-            href={STORE.ifoodUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="hidden sm:inline-block px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 transition border border-white/10"
+            href="#carrinho"
+            className="px-3 py-1.5 rounded-xl bg-[--primary] hover:opacity-90 transition"
           >
-            Pedir no iFood
-          </a>
-
-          <a href="#carrinho" className="px-3 py-1.5 rounded-xl bg-[--primary] hover:opacity-90 transition">
             Carrinho ({cart.length})
           </a>
         </div>
@@ -244,7 +275,9 @@ export default function RoxoSaborMenu() {
       <section className="max-w-6xl mx-auto px-4 pt-8 pb-4">
         <div className="grid md:grid-cols-[1.2fr_.8fr] gap-4">
           <div className="rounded-2xl p-6 bg-[--card] border border-white/10 shadow-xl">
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">{BRAND.logoText}</h1>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+              {BRAND.logoText}
+            </h1>
             <p className="mt-1 opacity-80">Sua dose diária de energia e sabor.</p>
 
             <div className="mt-4 flex flex-wrap gap-2">
@@ -253,7 +286,9 @@ export default function RoxoSaborMenu() {
                   key={c.id}
                   onClick={() => setCategory(c.id)}
                   className={`px-3 py-1.5 rounded-xl border transition ${
-                    category === c.id ? "bg-white/10 border-white/20" : "bg-transparent border-white/10 hover:bg-white/5"
+                    category === c.id
+                      ? "bg-white/10 border-white/20"
+                      : "bg-transparent border-white/10 hover:bg-white/5"
                   }`}
                 >
                   {c.name}
@@ -280,7 +315,10 @@ export default function RoxoSaborMenu() {
                   placeholder="Digite seu código"
                   className="w-full sm:w-64 px-3 py-2 rounded-xl bg-black/30 border border-white/10 outline-none"
                 />
-                <button onClick={applyCoupon} className="px-3 py-2 rounded-xl bg-[--primary] hover:opacity-90">
+                <button
+                  onClick={applyCoupon}
+                  className="px-3 py-2 rounded-xl bg-[--primary] hover:opacity-90"
+                >
                   Validar código
                 </button>
               </div>
@@ -292,26 +330,16 @@ export default function RoxoSaborMenu() {
             </div>
           </div>
 
+          {/* Coluna “Como funciona” */}
           <div className="rounded-2xl p-6 bg-[--card] border border-white/10 shadow-xl">
-            <div className="text-sm opacity-80">Atalho rápido</div>
-            <div className="mt-2 grid gap-2">
-              <a
-                href={STORE.ifoodUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 transition text-center"
-              >
-                Pedir pelo iFood
-              </a>
-              <a
-                href={`https://wa.me/${STORE.whatsapp.replace(/\D/g, "")}`}
-                target="_blank"
-                rel="noreferrer"
-                className="px-4 py-3 rounded-xl bg-[--primary] hover:opacity-90 transition text-center"
-              >
-                Falar no WhatsApp
-              </a>
-              <div className="text-xs opacity-60">{STORE.instagram} • Entrega {STORE.deliveryHours}</div>
+            <div className="text-sm opacity-80">Como funciona</div>
+            <div className="mt-2 grid gap-2 text-sm opacity-90">
+              <div>1) Monte o pedido e preencha seus dados</div>
+              <div>2) Pague via Mercado Pago (PIX ou Cartão)</div>
+              <div>3) Pagamento aprovado → enviamos para produção</div>
+            </div>
+            <div className="text-xs opacity-60 mt-3">
+              {STORE.instagram} • Entrega {STORE.deliveryHours}
             </div>
           </div>
         </div>
@@ -335,35 +363,54 @@ export default function RoxoSaborMenu() {
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-bold tracking-tight">Seu pedido</h2>
                 {cart.length > 0 && (
-                  <button onClick={clearCart} className="text-sm opacity-70 hover:opacity-100">Limpar</button>
+                  <button
+                    onClick={clearCart}
+                    className="text-sm opacity-70 hover:opacity-100"
+                  >
+                    Limpar
+                  </button>
                 )}
               </div>
 
               {cart.length === 0 ? (
-                <div className="py-8 text-sm opacity-70">Seu carrinho está vazio. Adicione itens do cardápio para finalizar o pedido.</div>
+                <div className="py-8 text-sm opacity-70">
+                  Seu carrinho está vazio. Adicione itens do cardápio para
+                  finalizar o pedido.
+                </div>
               ) : (
                 <ul className="mt-3 divide-y divide-white/10">
                   {cart.map((i) => (
                     <li key={i.id} className="py-3 flex gap-3 items-start">
-                      <div className="w-10 h-10 rounded-lg bg-black/30 grid place-items-center">🍧</div>
+                      <div className="w-10 h-10 rounded-lg bg-black/30 grid place-items-center">
+                        🍧
+                      </div>
                       <div className="grow">
                         <div className="font-medium leading-tight">
                           {i.name}
-                          {i.size ? <span className="opacity-70"> ({i.size.label})</span> : null}
+                          {i.size ? (
+                            <span className="opacity-70"> ({i.size.label})</span>
+                          ) : null}
                         </div>
                         {i.addons?.length ? (
-                          <div className="text-xs opacity-70">Adicionais: {i.addons.map((a) => a.name).join(", ")}</div>
+                          <div className="text-xs opacity-70">
+                            Adicionais: {i.addons.map((a) => a.name).join(", ")}
+                          </div>
                         ) : null}
                         <div className="text-sm mt-1">{currency(i.subtotal)}</div>
                       </div>
-                      <button onClick={() => removeFromCart(i.id)} className="px-2 py-1 rounded-lg border border-white/10 hover:bg-white/5 text-xs">remover</button>
+                      <button
+                        onClick={() => removeFromCart(i.id)}
+                        className="px-2 py-1 rounded-lg border border-white/10 hover:bg-white/5 text-xs"
+                      >
+                        remover
+                      </button>
                     </li>
                   ))}
                 </ul>
               )}
             </div>
 
-            {/* RESUMO */}
+            {/* RESUMO + CHECKOUT */}
             <CartSummary
               subtotal={subtotal}
               discount={discount}
@@ -372,32 +419,45 @@ export default function RoxoSaborMenu() {
               setNote={setNote}
               cart={cart}
               couponCode={couponInfo?.code}
+              customer={customer}
+              setCustomer={setCustomer}
+              checkoutMP={checkoutMP}
             />
           </div>
         </div>
       </section>
 
       <footer className="py-10 text-center text-xs opacity-60">
-        <div>{BRAND.name} • {STORE.deliveryHours}</div>
+        <div>
+          {BRAND.name} • {STORE.deliveryHours}
+        </div>
         <div>Feito com ❤️ para vender mais açaí</div>
       </footer>
 
       <style jsx global>{`
-        :root{
-          --primary:${BRAND.colors.primary};
-          --primaryDark:${BRAND.colors.primaryDark};
-          --accent:${BRAND.colors.accent};
-          --bg:${BRAND.colors.darkBg};
-          --fg:${BRAND.colors.darkFg};
-          --card:${BRAND.colors.cardDark};
+        :root {
+          --primary: ${BRAND.colors.primary};
+          --primaryDark: ${BRAND.colors.primaryDark};
+          --accent: ${BRAND.colors.accent};
+          --bg: ${BRAND.colors.darkBg};
+          --fg: ${BRAND.colors.darkFg};
+          --card: ${BRAND.colors.cardDark};
         }
-        :root.light{
-          --bg:${BRAND.colors.lightBg};
-          --fg:${BRAND.colors.lightFg};
-          --card:${BRAND.colors.cardLight};
+        :root.light {
+          --bg: ${BRAND.colors.lightBg};
+          --fg: ${BRAND.colors.lightFg};
+          --card: ${BRAND.colors.cardLight};
         }
-        html.light, html.light body { background: var(--bg); color: var(--fg); }
-        html.dark, html.dark body  { background: var(--bg); color: var(--fg); }
+        html.light,
+        html.light body {
+          background: var(--bg);
+          color: var(--fg);
+        }
+        html.dark,
+        html.dark body {
+          background: var(--bg);
+          color: var(--fg);
+        }
       `}</style>
 
       {/* sincroniza classe html light/dark */}
@@ -406,19 +466,28 @@ export default function RoxoSaborMenu() {
   );
 }
 
-function ThemeBinder({ theme }){
+function ThemeBinder({ theme }) {
   useEffect(() => {
     const html = document.documentElement;
-    html.classList.remove("light","dark");
+    html.classList.remove("light", "dark");
     html.classList.add(theme === "dark" ? "dark" : "light");
   }, [theme]);
   return null;
 }
 
 // ====== CART SUMMARY ======
-function CartSummary({ subtotal, discount, total, note, setNote, cart, couponCode }){
-  const waLink = useMemo(() => buildWhatsAppLink({ cart, note, total, couponCode }), [cart, note, total, couponCode]);
-
+function CartSummary({
+  subtotal,
+  discount,
+  total,
+  note,
+  setNote,
+  cart,
+  couponCode,
+  customer,
+  setCustomer,
+  checkoutMP,
+}) {
   return (
     <div className="p-4 border-t md:border-t-0 md:border-l border-white/10 bg-black/10">
       <div className="grid gap-3">
@@ -430,6 +499,31 @@ function CartSummary({ subtotal, discount, total, note, setNote, cart, couponCod
             onChange={(e) => setNote(e.target.value)}
             placeholder="Ex.: Sem granola, pouco leite condensado…"
             className="w-full px-3 py-2 rounded-xl bg-black/30 border border-white/10 outline-none"
+          />
+        </div>
+
+        {/* DADOS DO CLIENTE */}
+        <div className="grid gap-2 text-sm pt-2">
+          <label className="opacity-80">Seus dados</label>
+          <input
+            className="px-3 py-2 rounded-xl bg-black/30 border border-white/10 outline-none"
+            placeholder="Seu nome"
+            value={customer.name}
+            onChange={(e) => setCustomer({ ...customer, name: e.target.value })}
+          />
+          <input
+            className="px-3 py-2 rounded-xl bg-black/30 border border-white/10 outline-none"
+            placeholder="Telefone (WhatsApp)"
+            value={customer.phone}
+            onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
+          />
+          <input
+            className="px-3 py-2 rounded-xl bg-black/30 border border-white/10 outline-none"
+            placeholder="Endereço (rua, número e bairro)"
+            value={customer.address}
+            onChange={(e) =>
+              setCustomer({ ...customer, address: e.target.value })
+            }
           />
         </div>
 
@@ -448,24 +542,18 @@ function CartSummary({ subtotal, discount, total, note, setNote, cart, couponCod
           <span>{currency(total)}</span>
         </div>
 
-        <a
-          href={waLink}
-          target="_blank"
-          rel="noreferrer"
+        {/* BOTÃO PAGAR */}
+        <button
+          onClick={checkoutMP}
+          disabled={!cart.length}
           className={`mt-2 px-4 py-3 rounded-xl text-center font-medium ${
-            cart.length === 0 ? "pointer-events-none opacity-50 bg-white/10" : "bg-[--primary] hover:opacity-90"
+            cart.length === 0
+              ? "pointer-events-none opacity-50 bg-white/10"
+              : "bg-[--primary] hover:opacity-90"
           }`}
         >
-          Enviar pedido no WhatsApp
-        </a>
-        <a
-          href={STORE.ifoodUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="px-4 py-3 rounded-xl text-center font-medium bg-white/10 hover:bg-white/20"
-        >
-          Preferir iFood
-        </a>
+          Pagar com PIX ou Cartão (Mercado Pago)
+        </button>
       </div>
     </div>
   );
@@ -474,11 +562,14 @@ function CartSummary({ subtotal, discount, total, note, setNote, cart, couponCod
 // ====== CARTÃO DE PRODUTO ======
 function ProductCard({ product, onAdd }) {
   const [open, setOpen] = useState(false);
-  const [selectedSize, setSelectedSize] = useState(product.sizes ? product.sizes[0] : null);
+  const [selectedSize, setSelectedSize] = useState(
+    product.sizes ? product.sizes[0] : null
+  );
   const [chosenAddons, setChosenAddons] = useState([]);
 
   const addonsTotal = chosenAddons.reduce((s, a) => s + a.price, 0);
-  const currentPrice = (selectedSize ? selectedSize.price : product.price) + addonsTotal;
+  const currentPrice =
+    (selectedSize ? selectedSize.price : product.price) + addonsTotal;
 
   function toggleAddon(addon) {
     setChosenAddons((old) => {
@@ -490,10 +581,14 @@ function ProductCard({ product, onAdd }) {
 
   return (
     <div className="rounded-2xl overflow-hidden border border-white/10 bg-[--card] flex flex-col">
-      <div className="aspect-[4/3] bg-black/20 grid place-items-center text-4xl">🍧</div>
+      <div className="aspect-[4/3] bg-black/20 grid place-items-center text-4xl">
+        🍧
+      </div>
       <div className="p-4 grow flex flex-col">
         <div className="font-semibold text-lg leading-tight">{product.name}</div>
-        {product.desc && <p className="mt-1 opacity-75 text-sm">{product.desc}</p>}
+        {product.desc && (
+          <p className="mt-1 opacity-75 text-sm">{product.desc}</p>
+        )}
 
         {product.sizes && (
           <div className="mt-3 flex flex-wrap gap-2">
@@ -502,7 +597,9 @@ function ProductCard({ product, onAdd }) {
                 key={s.code}
                 onClick={() => setSelectedSize(s)}
                 className={`px-2.5 py-1.5 rounded-lg border text-sm transition ${
-                  selectedSize?.code === s.code ? "bg-white/10 border-white/20" : "bg-transparent border-white/10 hover:bg-white/5"
+                  selectedSize?.code === s.code
+                    ? "bg-white/10 border-white/20"
+                    : "bg-transparent border-white/10 hover:bg-white/5"
                 }`}
               >
                 {s.label} • {currency(s.price)}
@@ -513,10 +610,15 @@ function ProductCard({ product, onAdd }) {
 
         {/* Adicionais */}
         <details className="mt-3">
-          <summary className="cursor-pointer text-sm opacity-80 select-none">Adicionar complementos</summary>
+          <summary className="cursor-pointer text-sm opacity-80 select-none">
+            Adicionar complementos
+          </summary>
           <div className="mt-2 grid grid-cols-2 gap-2">
             {ADDONS.map((a) => (
-              <label key={a.id} className="flex items-center gap-2 text-sm p-2 rounded-lg bg-black/30 border border-white/10">
+              <label
+                key={a.id}
+                className="flex items-center gap-2 text-sm p-2 rounded-lg bg-black/30 border border-white/10"
+              >
                 <input
                   type="checkbox"
                   checked={!!chosenAddons.find((x) => x.id === a.id)}
@@ -541,7 +643,9 @@ function ProductCard({ product, onAdd }) {
               </button>
             )}
             <button
-              onClick={() => onAdd(product, { size: selectedSize, addons: chosenAddons })}
+              onClick={() =>
+                onAdd(product, { size: selectedSize, addons: chosenAddons })
+              }
               className="px-3 py-2 rounded-xl bg-[--primary] hover:opacity-90"
             >
               Adicionar
@@ -555,7 +659,12 @@ function ProductCard({ product, onAdd }) {
             {product.tags?.length ? (
               <div className="mt-2 flex gap-2 flex-wrap">
                 {product.tags.map((t) => (
-                  <span key={t} className="px-2 py-0.5 rounded-lg bg-black/40 border border-white/10 text-xs">#{t}</span>
+                  <span
+                    key={t}
+                    className="px-2 py-0.5 rounded-lg bg-black/40 border border-white/10 text-xs"
+                  >
+                    #{t}
+                  </span>
                 ))}
               </div>
             ) : null}
