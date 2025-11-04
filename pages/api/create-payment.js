@@ -42,12 +42,12 @@ export default async function handler(req, res) {
         },
         binary_mode: true,
         back_urls: {
-          success: `${process.env.BASE_URL}/?pago=sucesso`,
-          failure: `${process.env.BASE_URL}/?pago=erro`,
-          pending: `${process.env.BASE_URL}/?pago=pending`,
+          success: `${process.env.URL_BASE}/?pago=sucesso`,
+          failure: `${process.env.URL_BASE}/?pago=erro`,
+          pending: `${process.env.URL_BASE}/?pago=pending`,
         },
         auto_return: "approved",
-        notification_url: `${process.env.BASE_URL}/api/mp-webhook?secret=${process.env.MP_NOTIFICATION_SECRET}`,
+        notification_url: `${process.env.URL_BASE}/api/mp-webhook?secret=${process.env.MP_NOTIFICATION_SECRET}`,
         external_reference: `pedido_${Date.now()}`,
         metadata: {
           note,
