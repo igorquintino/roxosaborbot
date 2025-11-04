@@ -1,28 +1,43 @@
+// /pages/api/mp-webhook.js
 export default async function handler(req, res) {
-  const secret = req.query.secret;
-  if (secret !== process.env.MP_NOTIFICATION_SECRET)
-    return res.status(403).json({ error: "Segredo inválido" });
+  try {
+    // 1) Valida método
+    if (req.method !== "POST") return res.status(405).send("Method not allowed");
 
-  const body = req.body;
-
-  // Verifica se é um pagamento aprovado
-  if (body.action === "payment.updated" && body.data && body.data.id) {
-    const paymentId = body.data.id;
-    console.log("Pagamento confirmado:", paymentId);
-
-    // Envia mensagem pro WhatsApp do lojista
-    try {
-      await fetch(`${process.env.BASE_URL}/api/send-whatsapp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: "✅ Pedido confirmado! Pagamento aprovado via Mercado Pago.",
-        }),
-      });
-    } catch (err) {
-      console.error("Erro ao enviar mensagem WhatsApp:", err);
+    // 2) Valida secret simples (querystring)
+    const secret = req.query?.secret;
+    if (secret !== process.env.MP_NOTIFICATION_SECRET) {
+      return res.status(401).send("Unauthorized");
     }
-  }
 
-  res.status(200).json({ received: true });
+    // 3) Mercado Pago envia algo como { type: "payment", data: { id: "123" } }
+    const { type, data } = req.body || {};
+    if (type !== "payment" || !data?.id) {
+      return res.status(200).send("ignored");
+    }
+
+    // 4) Consulta pagamento para confirmar status
+    const r = await fetch(`https://api.mercadopago.com/v1/payments/${data.id}`, {
+      headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` },
+      cache: "no-store"
+    });
+    const payment = await r.json();
+
+    // 5) Idempotência: evite processar o mesmo id 2x (salve em DB e cheque antes)
+    // const already = await db.find(payment.id); if (already) return res.status(200).send("ok");
+
+    if (payment.status === "approved") {
+      const ref = payment.external_reference; // "pedido_..."
+      // TODO: marcar pedido (ref) como pago no seu DB
+      // await db.markPaid(ref, payment.id, payment.payer?.email, payment.transaction_amount);
+      console.log("✅ PAGO:", ref, payment.id);
+    } else {
+      console.log("ℹ️ Status:", payment.status, payment.id);
+    }
+
+    return res.status(200).send("ok");
+  } catch (e) {
+    console.error("Webhook error:", e);
+    return res.status(500).send("error");
+  }
 }

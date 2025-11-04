@@ -1,35 +1,67 @@
-import mercadopago from "mercadopago";
+// /pages/api/mp-create.js (Next.js pages) ou /app/api/mp-create/route.js (App Router adaptando)
+import { MercadoPagoConfig, Preference } from "mercadopago";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).send("Method not allowed");
-
-  const { cart, total, note } = req.body;
-  const baseUrl = process.env.BASE_URL;
-
-  mercadopago.configure({
-    access_token: process.env.MP_ACCESS_TOKEN,
-  });
-
   try {
-    const preference = {
-      items: cart.map((item) => ({
-        title: item.name,
-        quantity: 1,
-        currency_id: "BRL",
-        unit_price: Number(item.subtotal || item.price),
-      })),
-      back_urls: {
-        success: `${baseUrl}/?pago=sucesso`,
-        failure: `${baseUrl}/?pago=erro`,
-      },
-      notification_url: `${baseUrl}/api/mp-webhook?secret=${process.env.MP_NOTIFICATION_SECRET}`,
-      metadata: { note },
-    };
+    const { cart = [], total, note = "", customer = {} } = req.body || {};
 
-    const response = await mercadopago.preferences.create(preference);
-    res.status(200).json({ url: response.body.init_point });
+    const client = new MercadoPagoConfig({
+      accessToken: process.env.MP_ACCESS_TOKEN,
+    });
+    const preference = new Preference(client);
+
+    const items = cart.map((i) => ({
+      title: i.name,
+      quantity: Number(i.qty || 1),
+      unit_price: Number(i.subtotal ?? i.price ?? 0),
+      currency_id: "BRL",
+    }));
+
+    // (Opcional) validar soma dos items com "total"
+    // const sum = items.reduce((acc, it) => acc + it.unit_price * it.quantity, 0);
+    // if (total && Math.abs(sum - Number(total)) > 0.01) {
+    //   return res.status(400).json({ error: "Total divergente." });
+    // }
+
+    const pref = await preference.create({
+      body: {
+        items,
+        payer: {
+          name: customer?.name || "",
+          phone: {
+            area_code: customer?.areaCode || "31",
+            number: String(customer?.phone || "")
+          },
+          address: { street_name: customer?.address || "" },
+        },
+        payment_methods: {
+          excluded_payment_types: [{ id: "ticket" }], // sem boleto
+          installments: 1,
+          default_payment_method_id: "pix", // PIX como padrão
+        },
+        binary_mode: true,
+        back_urls: {
+          success: `${process.env.BASE_URL}/?pago=sucesso`,
+          failure: `${process.env.BASE_URL}/?pago=erro`,
+          pending: `${process.env.BASE_URL}/?pago=pending`,
+        },
+        auto_return: "approved",
+        notification_url: `${process.env.BASE_URL}/api/mp-webhook?secret=${process.env.MP_NOTIFICATION_SECRET}`,
+        external_reference: `pedido_${Date.now()}`,
+        metadata: {
+          note,
+          loja: "Roxo Sabor",
+          customer_name: customer?.name || "",
+          customer_phone: String(customer?.phone || "")
+        },
+        statement_descriptor: "ROXO SABOR",
+      },
+    });
+
+    return res.status(200).json({ url: pref.init_point });
   } catch (error) {
-    console.error("Erro ao criar pagamento:", error);
-    res.status(500).json({ error: "Erro ao criar pagamento" });
+    console.error("Erro ao criar pagamento:", error?.message || error);
+    return res.status(500).json({ error: "Erro ao iniciar pagamento." });
   }
 }
