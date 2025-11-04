@@ -36,10 +36,10 @@ export default async function handler(req, res) {
           address: { street_name: customer?.address || "" },
         },
         payment_methods: {
-          excluded_payment_types: [{ id: "ticket" }], // sem boleto
-          installments: 1,
-          default_payment_method_id: "pix", // PIX como padrão
-        },
+  excluded_payment_types: [{ id: "ticket" }], // exclui só boleto
+  installments: 1
+},
+
         binary_mode: true,
         back_urls: {
           success: `${process.env.URL_BASE}/?pago=sucesso`,
