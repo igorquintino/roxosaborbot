@@ -54,7 +54,7 @@ const CATEGORIES = [
 ];
 
 const ADDONS = [
-  { id: "leiteNinho", name: "Leite Ninho", price: 3.5 },
+  { id: "leiteNinho", name: "Leite Ninho", price: 1.0 },
   { id: "nutella", name: "Nutella", price: 4.5 },
   { id: "morango", name: "Morango", price: 3.0 },
   { id: "banana", name: "Banana", price: 2.5 },
@@ -69,7 +69,7 @@ const PRODUCTS = [
     category: "promos",
     name: "PROMO • 330 ml por R$ 9,99",
     desc: "Açaí 330 ml com 1 adicional simples.",
-    price: 9.99,
+    price: 0.99,
     img: "/placeholder.svg?height=120&width=160",
     tags: ["promo", "popular"],
   },
