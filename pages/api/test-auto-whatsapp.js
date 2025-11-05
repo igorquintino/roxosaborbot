@@ -3,7 +3,7 @@ export default async function handler(req, res) {
   try {
     // Simulação de um pedido "fake" só para teste do WhatsApp
     const pedidoFake = {
-      to: process.env.MERCHANT_PHONE_E164 || "+5531984853327, // coloque seu número se quiser fixo
+      to: process.env.TEST_WHATSAPP_TO || "+55DDDSEUNUMERO", // coloque seu número se quiser fixo
       customer_name: "Igor",
       pedido: "Açaí 500ml com granola e morango 🍓",
       total: 24.90
