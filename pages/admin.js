@@ -1,15 +1,14 @@
-// pages/admin.js
 import React, { useEffect, useMemo, useState } from "react";
 
-/** =======================
- *  Config básica / chaves
- *  ======================= */
 const LS_KEY = "ilumo_cfg_v1";
-const ADMIN_OK_KEY = "ilumo_admin_ok";
+const ADMIN_OK_KEY = "rs_admin_ok";
 const PIN_ENV = process.env.NEXT_PUBLIC_ADMIN_PIN || "";
 
-/** Defaults iniciais para não quebrar nada */
-const defaultConfig = {
+// Clone compatível com qualquer browser
+const jclone = (o) => JSON.parse(JSON.stringify(o ?? {}));
+
+// Defaults bem simples (não quebram se lidos “crus”)
+const DEFAULT_CFG = {
   store: {
     name: "Roxo Sabor",
     whatsapp: "",
@@ -21,11 +20,7 @@ const defaultConfig = {
     raspadinhaCopy:
       "Raspou, achou, ganhou! Digite seu código para validar seu prêmio.",
   },
-  categories: [
-    { id: "promos", name: "Promoções" },
-    { id: "acai", name: "Açaí no Copo" },
-    { id: "adicionais", name: "Adicionais" },
-  ],
+  categories: [{ id: "acai", name: "Açaí no Copo" }],
   addons: [{ id: "granola", name: "Granola", price: 2 }],
   products: [
     {
@@ -36,39 +31,21 @@ const defaultConfig = {
       price: 14.9,
       img: "",
       tags: ["popular"],
-      sizes: [
-        { code: "330", label: "330 ml", price: 14.9 },
-        { code: "500", label: "500 ml", price: 19.9 },
-      ],
+      sizes: [{ code: "330", label: "330 ml", price: 14.9 }],
     },
   ],
   coupons: { ROXO10: { type: "percent", value: 10, label: "10% de desconto" } },
 };
 
-/** ===============
- *  Normalização
- *  =============== */
-// util para garantir formatos válidos
-function normalizeConfig(any) {
-  const base = {
-    store: {},
-    categories: [],
-    addons: [],
-    products: [],
-    coupons: {},
-  };
-  const c = { ...base, ...(any || {}) };
-
-  // objetos
-  c.store = { ...(c.store || {}) };
-  c.coupons = { ...(c.coupons || {}) };
-
-  // arrays (sempre array)
+// Normaliza sem exigir APIs novas
+function normalize(raw) {
+  const c = jclone(raw);
+  c.store = c.store || {};
+  c.coupons = c.coupons || {};
   c.categories = Array.isArray(c.categories) ? c.categories : [];
   c.addons = Array.isArray(c.addons) ? c.addons : [];
   c.products = Array.isArray(c.products) ? c.products : [];
 
-  // normaliza items internos:
   c.categories = c.categories.map((x) => ({
     id: String(x?.id || ""),
     name: String(x?.name || ""),
@@ -98,48 +75,115 @@ function normalizeConfig(any) {
   return c;
 }
 
-/** ===============
- *  Component raiz
- *  =============== */
 export default function AdminPage() {
-  /** Gate de PIN (somente client) */
-  const [pinOk, setPinOk] = useState(false);
+  // Evita SSR acessar window/localStorage
+  const [mounted, setMounted] = useState(false);
+
+  // Gate do PIN
+  const [ok, setOk] = useState(false);
   const [pin, setPin] = useState("");
 
+  // Config carregada
+  const [cfg, setCfg] = useState(null);
+
   useEffect(() => {
+    setMounted(true);
+
     try {
-      const cached = localStorage.getItem(ADMIN_OK_KEY);
-      if (cached === "1") setPinOk(true);
+      // util para limpar localStorage corrompido: /admin?clear=1
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("clear") === "1") {
+        localStorage.removeItem(LS_KEY);
+        localStorage.removeItem(ADMIN_OK_KEY);
+        url.searchParams.delete("clear");
+        window.location.replace(url.toString());
+        return;
+      }
     } catch {}
+
+    try {
+      const okFlag = localStorage.getItem(ADMIN_OK_KEY);
+      if (okFlag === "1") setOk(true);
+    } catch {}
+
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      const base = raw ? JSON.parse(raw) : DEFAULT_CFG;
+      setCfg(normalize(base));
+    } catch {
+      setCfg(normalize(DEFAULT_CFG));
+    }
   }, []);
 
-  function handlePinSubmit(e) {
+  function checkPin(e) {
     e.preventDefault();
-    if (!PIN_ENV) {
-      alert(
-        "Defina a variável NEXT_PUBLIC_ADMIN_PIN no ambiente para proteger o painel."
-      );
-    }
     if (pin && PIN_ENV && pin === PIN_ENV) {
       localStorage.setItem(ADMIN_OK_KEY, "1");
-      setPinOk(true);
+      setOk(true);
     } else {
-      alert("PIN inválido.");
+      alert("PIN incorreto.");
     }
   }
 
-  if (!pinOk) {
+  function save() {
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(cfg));
+      alert("✅ Salvo com sucesso!");
+    } catch {
+      alert("Falha ao salvar (localStorage indisponível).");
+    }
+  }
+
+  function downloadJson() {
+    const blob = new Blob([JSON.stringify(cfg, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "ilumo_cfg_v1.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function uploadJson(e) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result));
+        setCfg(normalize(parsed));
+        alert("✅ Config carregada (salve para aplicar)!");
+      } catch {
+        alert("Arquivo inválido.");
+      }
+    };
+    reader.readAsText(f);
+  }
+
+  function update(path, mutator) {
+    setCfg((prev) => {
+      const draft = jclone(prev);
+      const ref = path.split(".").reduce((acc, k) => acc[k], draft);
+      mutator(ref);
+      return normalize(draft);
+    });
+  }
+
+  if (!mounted) return null;
+
+  if (!ok) {
     return (
       <div className="min-h-screen grid place-items-center bg-[#f7f7fb] text-[#0f172a]">
         <form
-          onSubmit={handlePinSubmit}
+          onSubmit={checkPin}
           className="rounded-2xl bg-white border border-[#e5e7eb] p-6 w-full max-w-sm shadow-sm"
         >
           <h1 className="text-xl font-semibold">Acesso ao Painel</h1>
           <p className="text-sm text-[#475569] mt-1">Digite o PIN para entrar</p>
           <input
             type="password"
-            autoFocus
             value={pin}
             onChange={(e) => setPin(e.target.value)}
             className="w-full mt-4 px-3 py-2 rounded-xl border border-[#e5e7eb] outline-none bg-white"
@@ -159,80 +203,12 @@ export default function AdminPage() {
     );
   }
 
-  /** Estado da config */
-  const [cfg, setCfg] = useState(normalizeConfig(defaultConfig));
-
-  /** Carregamento + rota de limpeza */
-  useEffect(() => {
-    // suporte a /admin?clear=1 para limpar storage corrompido
-    if (typeof window !== "undefined") {
-      const u = new URL(window.location.href);
-      if (u.searchParams.get("clear") === "1") {
-        localStorage.removeItem(LS_KEY);
-        localStorage.removeItem(ADMIN_OK_KEY);
-        u.searchParams.delete("clear");
-        window.location.replace(u.toString());
-        return;
-      }
-    }
-    try {
-      const raw = localStorage.getItem(LS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        setCfg(normalizeConfig({ ...defaultConfig, ...parsed }));
-      } else {
-        setCfg(normalizeConfig(defaultConfig));
-      }
-    } catch {
-      setCfg(normalizeConfig(defaultConfig));
-    }
-  }, []);
-
-  /** Util para atualizar subestruturas sem mutar raiz */
-  function updateArray(path, updater) {
-    setCfg((prev) => {
-      const next = structuredClone(prev);
-      const ref = path.split(".").reduce((acc, key) => acc[key], next);
-      updater(ref);
-      return normalizeConfig(next);
-    });
-  }
-
-  /** Persistência */
-  function save() {
-    localStorage.setItem(LS_KEY, JSON.stringify(cfg));
-    alert("✅ Configurações salvas!");
-  }
-  function downloadJson() {
-    const blob = new Blob([JSON.stringify(cfg, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "ilumo_cfg_v1.json";
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-  function uploadJson(e) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const parsed = JSON.parse(String(reader.result));
-        setCfg(normalizeConfig(parsed));
-        alert("✅ Config carregada (salve para aplicar)!");
-      } catch {
-        alert("Arquivo inválido.");
-      }
-    };
-    reader.readAsText(f);
-  }
-  function clearAll() {
-    if (!confirm("Tem certeza que deseja limpar TODA a configuração?")) return;
-    localStorage.removeItem(LS_KEY);
-    location.reload();
+  if (!cfg) {
+    return (
+      <div className="min-h-screen grid place-items-center">
+        Carregando painel…
+      </div>
+    );
   }
 
   return (
@@ -276,7 +252,7 @@ export default function AdminPage() {
       </header>
 
       <main className="max-w-6xl mx-auto p-4 grid lg:grid-cols-2 gap-6">
-        {/* LOJA */}
+        {/* Loja */}
         <section className="rounded-2xl bg-white border border-[#e5e7eb] p-4 shadow-sm">
           <h2 className="text-lg font-semibold">Loja</h2>
           <div className="mt-3 grid gap-2">
@@ -348,34 +324,10 @@ export default function AdminPage() {
                 })
               }
             />
-
-            <label className="text-sm">Nota de loja fechada</label>
-            <input
-              className="input"
-              value={cfg.store.closedNote || ""}
-              onChange={(e) =>
-                setCfg({
-                  ...cfg,
-                  store: { ...cfg.store, closedNote: e.target.value },
-                })
-              }
-            />
-
-            <label className="text-sm">Texto da raspadinha</label>
-            <textarea
-              className="input h-24"
-              value={cfg.store.raspadinhaCopy || ""}
-              onChange={(e) =>
-                setCfg({
-                  ...cfg,
-                  store: { ...cfg.store, raspadinhaCopy: e.target.value },
-                })
-              }
-            />
           </div>
         </section>
 
-        {/* CATEGORIAS */}
+        {/* Categorias */}
         <section className="rounded-2xl bg-white border border-[#e5e7eb] p-4 shadow-sm">
           <h2 className="text-lg font-semibold">Categorias</h2>
           <div className="mt-3 space-y-2">
@@ -389,7 +341,7 @@ export default function AdminPage() {
                   placeholder="id"
                   value={c.id}
                   onChange={(e) =>
-                    updateArray("categories", (arr) => {
+                    update("categories", (arr) => {
                       arr[idx].id = e.target.value;
                     })
                   }
@@ -399,16 +351,14 @@ export default function AdminPage() {
                   placeholder="Nome"
                   value={c.name}
                   onChange={(e) =>
-                    updateArray("categories", (arr) => {
+                    update("categories", (arr) => {
                       arr[idx].name = e.target.value;
                     })
                   }
                 />
                 <button
                   className="btn"
-                  onClick={() =>
-                    updateArray("categories", (arr) => arr.splice(idx, 1))
-                  }
+                  onClick={() => update("categories", (arr) => arr.splice(idx, 1))}
                 >
                   Excluir
                 </button>
@@ -416,18 +366,14 @@ export default function AdminPage() {
             ))}
             <button
               className="btn-primary"
-              onClick={() =>
-                updateArray("categories", (arr) =>
-                  arr.push({ id: "", name: "" })
-                )
-              }
+              onClick={() => update("categories", (arr) => arr.push({ id: "", name: "" }))}
             >
               + Adicionar categoria
             </button>
           </div>
         </section>
 
-        {/* ADICIONAIS */}
+        {/* Adicionais */}
         <section className="rounded-2xl bg-white border border-[#e5e7eb] p-4 shadow-sm">
           <h2 className="text-lg font-semibold">Adicionais</h2>
           <div className="mt-3 space-y-2">
@@ -441,7 +387,7 @@ export default function AdminPage() {
                   placeholder="id"
                   value={a.id}
                   onChange={(e) =>
-                    updateArray("addons", (arr) => {
+                    update("addons", (arr) => {
                       arr[idx].id = e.target.value;
                     })
                   }
@@ -451,7 +397,7 @@ export default function AdminPage() {
                   placeholder="Nome"
                   value={a.name}
                   onChange={(e) =>
-                    updateArray("addons", (arr) => {
+                    update("addons", (arr) => {
                       arr[idx].name = e.target.value;
                     })
                   }
@@ -462,16 +408,14 @@ export default function AdminPage() {
                   placeholder="Preço"
                   value={a.price}
                   onChange={(e) =>
-                    updateArray("addons", (arr) => {
+                    update("addons", (arr) => {
                       arr[idx].price = Number(e.target.value || 0);
                     })
                   }
                 />
                 <button
                   className="btn"
-                  onClick={() =>
-                    updateArray("addons", (arr) => arr.splice(idx, 1))
-                  }
+                  onClick={() => update("addons", (arr) => arr.splice(idx, 1))}
                 >
                   Excluir
                 </button>
@@ -480,9 +424,7 @@ export default function AdminPage() {
             <button
               className="btn-primary"
               onClick={() =>
-                updateArray("addons", (arr) =>
-                  arr.push({ id: "", name: "", price: 0 })
-                )
+                update("addons", (arr) => arr.push({ id: "", name: "", price: 0 }))
               }
             >
               + Adicionar adicional
@@ -490,15 +432,12 @@ export default function AdminPage() {
           </div>
         </section>
 
-        {/* PRODUTOS */}
+        {/* Produtos */}
         <section className="rounded-2xl bg-white border border-[#e5e7eb] p-4 shadow-sm lg:col-span-2">
           <h2 className="text-lg font-semibold">Produtos</h2>
           <div className="mt-3 space-y-4">
             {(cfg.products || []).map((p, idx) => (
-              <div
-                key={idx}
-                className="rounded-xl border border-[#e5e7eb] p-3 bg-[#fafafa]"
-              >
+              <div key={idx} className="rounded-xl border border-[#e5e7eb] p-3 bg-[#fafafa]">
                 <div className="grid md:grid-cols-2 gap-3">
                   <div className="grid gap-2">
                     <label className="text-sm">ID</label>
@@ -506,9 +445,7 @@ export default function AdminPage() {
                       className="input"
                       value={p.id}
                       onChange={(e) =>
-                        updateArray("products", (arr) => {
-                          arr[idx].id = e.target.value;
-                        })
+                        update("products", (arr) => { arr[idx].id = e.target.value; })
                       }
                     />
                     <label className="text-sm">Categoria (id)</label>
@@ -516,9 +453,7 @@ export default function AdminPage() {
                       className="input"
                       value={p.category}
                       onChange={(e) =>
-                        updateArray("products", (arr) => {
-                          arr[idx].category = e.target.value;
-                        })
+                        update("products", (arr) => { arr[idx].category = e.target.value; })
                       }
                     />
                     <label className="text-sm">Nome</label>
@@ -526,9 +461,7 @@ export default function AdminPage() {
                       className="input"
                       value={p.name}
                       onChange={(e) =>
-                        updateArray("products", (arr) => {
-                          arr[idx].name = e.target.value;
-                        })
+                        update("products", (arr) => { arr[idx].name = e.target.value; })
                       }
                     />
                     <label className="text-sm">Descrição</label>
@@ -536,9 +469,7 @@ export default function AdminPage() {
                       className="input h-20"
                       value={p.desc || ""}
                       onChange={(e) =>
-                        updateArray("products", (arr) => {
-                          arr[idx].desc = e.target.value;
-                        })
+                        update("products", (arr) => { arr[idx].desc = e.target.value; })
                       }
                     />
                   </div>
@@ -549,9 +480,7 @@ export default function AdminPage() {
                       className="input"
                       value={p.price}
                       onChange={(e) =>
-                        updateArray("products", (arr) => {
-                          arr[idx].price = Number(e.target.value || 0);
-                        })
+                        update("products", (arr) => { arr[idx].price = Number(e.target.value || 0); })
                       }
                     />
                     <label className="text-sm">Imagem (URL/DataURL)</label>
@@ -559,9 +488,7 @@ export default function AdminPage() {
                       className="input"
                       value={p.img}
                       onChange={(e) =>
-                        updateArray("products", (arr) => {
-                          arr[idx].img = e.target.value;
-                        })
+                        update("products", (arr) => { arr[idx].img = e.target.value; })
                       }
                     />
                     <label className="text-sm">Tags (vírgula)</label>
@@ -569,11 +496,8 @@ export default function AdminPage() {
                       className="input"
                       value={(p.tags || []).join(",")}
                       onChange={(e) =>
-                        updateArray("products", (arr) => {
-                          arr[idx].tags = e.target.value
-                            .split(",")
-                            .map((s) => s.trim())
-                            .filter(Boolean);
+                        update("products", (arr) => {
+                          arr[idx].tags = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
                         })
                       }
                     />
@@ -584,18 +508,13 @@ export default function AdminPage() {
                   <div className="font-medium">Tamanhos (opcional)</div>
                   <div className="mt-2 space-y-2">
                     {(p.sizes || []).map((s, sidx) => (
-                      <div
-                        key={sidx}
-                        className="grid grid-cols-[1fr_2fr_1fr_auto] gap-2 items-center"
-                      >
+                      <div key={sidx} className="grid grid-cols-[1fr_2fr_1fr_auto] gap-2 items-center">
                         <input
                           className="input"
                           placeholder="code"
                           value={s.code}
                           onChange={(e) =>
-                            updateArray("products", (arr) => {
-                              arr[idx].sizes[sidx].code = e.target.value;
-                            })
+                            update("products", (arr) => { arr[idx].sizes[sidx].code = e.target.value; })
                           }
                         />
                         <input
@@ -603,9 +522,7 @@ export default function AdminPage() {
                           placeholder="label"
                           value={s.label}
                           onChange={(e) =>
-                            updateArray("products", (arr) => {
-                              arr[idx].sizes[sidx].label = e.target.value;
-                            })
+                            update("products", (arr) => { arr[idx].sizes[sidx].label = e.target.value; })
                           }
                         />
                         <input
@@ -614,19 +531,13 @@ export default function AdminPage() {
                           placeholder="price"
                           value={s.price}
                           onChange={(e) =>
-                            updateArray("products", (arr) => {
-                              arr[idx].sizes[sidx].price = Number(
-                                e.target.value || 0
-                              );
-                            })
+                            update("products", (arr) => { arr[idx].sizes[sidx].price = Number(e.target.value || 0); })
                           }
                         />
                         <button
                           className="btn"
                           onClick={() =>
-                            updateArray("products", (arr) => {
-                              arr[idx].sizes.splice(sidx, 1);
-                            })
+                            update("products", (arr) => { arr[idx].sizes.splice(sidx, 1); })
                           }
                         >
                           Remover
@@ -636,7 +547,7 @@ export default function AdminPage() {
                     <button
                       className="btn"
                       onClick={() =>
-                        updateArray("products", (arr) => {
+                        update("products", (arr) => {
                           arr[idx].sizes = arr[idx].sizes || [];
                           arr[idx].sizes.push({ code: "", label: "", price: 0 });
                         })
@@ -648,12 +559,7 @@ export default function AdminPage() {
                 </div>
 
                 <div className="mt-3 flex justify-between">
-                  <button
-                    className="btn"
-                    onClick={() =>
-                      updateArray("products", (arr) => arr.splice(idx, 1))
-                    }
-                  >
+                  <button className="btn" onClick={() => update("products", (arr) => arr.splice(idx, 1))}>
                     Excluir produto
                   </button>
                 </div>
@@ -662,17 +568,8 @@ export default function AdminPage() {
             <button
               className="btn-primary"
               onClick={() =>
-                updateArray("products", (arr) =>
-                  arr.push({
-                    id: "",
-                    category: "",
-                    name: "",
-                    desc: "",
-                    price: 0,
-                    img: "",
-                    tags: [],
-                    sizes: [],
-                  })
+                update("products", (arr) =>
+                  arr.push({ id: "", category: "", name: "", desc: "", price: 0, img: "", tags: [], sizes: [] })
                 )
               }
             >
@@ -681,64 +578,38 @@ export default function AdminPage() {
           </div>
         </section>
 
-        {/* CUPONS */}
+        {/* Cupons */}
         <section className="rounded-2xl bg-white border border-[#e5e7eb] p-4 shadow-sm">
           <h2 className="text-lg font-semibold">Cupons / Raspadinha</h2>
           <CouponEditor cfg={cfg} setCfg={setCfg} />
           <div className="mt-4 flex gap-2">
-            <button onClick={save} className="btn-primary">
-              Salvar
-            </button>
-            <button onClick={clearAll} className="btn">
+            <button onClick={save} className="btn-primary">Salvar</button>
+            <button onClick={() => { localStorage.removeItem(LS_KEY); location.reload(); }} className="btn">
               Limpar tudo
             </button>
           </div>
         </section>
       </main>
 
-      {/* estilos utilitários simples */}
       <style jsx global>{`
-        .input {
-          width: 100%;
-          padding: 10px 12px;
-          border-radius: 12px;
-          border: 1px solid #e5e7eb;
-          background: #fff;
-          outline: none;
-        }
-        .btn {
-          padding: 8px 12px;
-          border-radius: 10px;
-          border: 1px solid #e5e7eb;
-          background: #fff;
-        }
-        .btn-primary {
-          padding: 8px 12px;
-          border-radius: 10px;
-          background: #6d28d9;
-          color: #fff;
-        }
+        .input { width:100%; padding:10px 12px; border-radius:12px; border:1px solid #e5e7eb; background:#fff; outline:none; }
+        .btn { padding:8px 12px; border-radius:10px; border:1px solid #e5e7eb; background:#fff; }
+        .btn-primary { padding:8px 12px; border-radius:10px; background:#6D28D9; color:#fff; }
       `}</style>
     </div>
   );
 }
 
-/** ==================
- *  Editor de cupons
- *  ================== */
 function CouponEditor({ cfg, setCfg }) {
-  const entries = useMemo(
-    () => Object.entries(cfg.coupons || {}),
-    [cfg.coupons]
-  );
+  const entries = useMemo(() => Object.entries(cfg.coupons || {}), [cfg.coupons]);
 
   function setField(code, key, value) {
     setCfg((prev) => {
-      const next = structuredClone(prev);
-      if (!next.coupons) next.coupons = {};
-      if (!next.coupons[code]) next.coupons[code] = {};
-      next.coupons[code][key] = value;
-      return normalizeConfig(next);
+      const draft = jclone(prev);
+      draft.coupons = draft.coupons || {};
+      draft.coupons[code] = draft.coupons[code] || {};
+      draft.coupons[code][key] = value;
+      return normalize(draft);
     });
   }
 
@@ -746,66 +617,42 @@ function CouponEditor({ cfg, setCfg }) {
     const code = prompt("Código do cupom (ex.: ROXO10)");
     if (!code) return;
     setCfg((prev) => {
-      const next = structuredClone(prev);
-      if (!next.coupons) next.coupons = {};
-      next.coupons[code.toUpperCase()] = {
-        type: "percent",
-        value: 10,
-        label: "10% de desconto aplicado",
-      };
-      return normalizeConfig(next);
+      const draft = jclone(prev);
+      draft.coupons = draft.coupons || {};
+      draft.coupons[code.toUpperCase()] = { type: "percent", value: 10, label: "10% de desconto aplicado" };
+      return normalize(draft);
     });
   }
 
   function removeCoupon(code) {
     setCfg((prev) => {
-      const next = structuredClone(prev);
-      if (next.coupons) delete next.coupons[code];
-      return normalizeConfig(next);
+      const draft = jclone(prev);
+      if (draft.coupons) delete draft.coupons[code];
+      return normalize(draft);
     });
   }
 
   return (
     <div className="mt-3 space-y-3">
       {entries.map(([code, c]) => (
-        <div
-          key={code}
-          className="rounded-xl border border-[#e5e7eb] p-3 bg-[#fafafa]"
-        >
+        <div key={code} className="rounded-xl border border-[#e5e7eb] p-3 bg-[#fafafa]">
           <div className="font-semibold">{code}</div>
           <div className="grid md:grid-cols-3 gap-2 mt-2">
-            <select
-              className="input"
-              value={c.type || "percent"}
-              onChange={(e) => setField(code, "type", e.target.value)}
-            >
+            <select className="input" value={c.type || "percent"} onChange={(e) => setField(code, "type", e.target.value)}>
               <option value="percent">percent</option>
               <option value="msg">msg</option>
             </select>
-            <input
-              className="input"
-              type="number"
-              placeholder="valor (%)"
-              value={c.value ?? 0}
-              onChange={(e) => setField(code, "value", Number(e.target.value || 0))}
-            />
-            <input
-              className="input"
-              placeholder="label"
-              value={c.label || ""}
-              onChange={(e) => setField(code, "label", e.target.value)}
-            />
+            <input className="input" type="number" placeholder="valor (%)" value={c.value ?? 0}
+                   onChange={(e) => setField(code, "value", Number(e.target.value || 0))} />
+            <input className="input" placeholder="label" value={c.label || ""}
+                   onChange={(e) => setField(code, "label", e.target.value)} />
           </div>
           <div className="mt-2">
-            <button className="btn" onClick={() => removeCoupon(code)}>
-              Remover cupom
-            </button>
+            <button className="btn" onClick={() => removeCoupon(code)}>Remover cupom</button>
           </div>
         </div>
       ))}
-      <button className="btn-primary" onClick={addCoupon}>
-        + Adicionar cupom
-      </button>
+      <button className="btn-primary" onClick={addCoupon}>+ Adicionar cupom</button>
     </div>
   );
 }
