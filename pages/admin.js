@@ -1,40 +1,38 @@
 // pages/admin.js
 import React, { useEffect, useMemo, useState } from "react";
 
-/** =========================
- *  CONFIG
- * ========================= */
-const LS_KEY = "ilumo_cfg_v1"; // onde salvamos no navegador
-const PIN = process.env.NEXT_PUBLIC_ADMIN_PIN || "";
+/** =======================
+ *  Config básica / chaves
+ *  ======================= */
+const LS_KEY = "ilumo_cfg_v1";
+const ADMIN_OK_KEY = "ilumo_admin_ok";
+const PIN_ENV = process.env.NEXT_PUBLIC_ADMIN_PIN || "";
 
-// modelo base (fallback)
+/** Defaults iniciais para não quebrar nada */
 const defaultConfig = {
   store: {
     name: "Roxo Sabor",
-    whatsapp: "31984853327",
+    whatsapp: "",
     instagram: "@roxosaboroficial",
+    deliveryHours: "Todos os dias, 14h às 23h",
     bannerUrl: "",
     logoUrl: "",
-    deliveryHours: "Todos os dias, 14h às 23h",
     closedNote: "",
-    raspadinhaCopy: "Raspou, achou, ganhou! Digite o código para validar.",
-    theme: "light", // light / dark (futuro)
-    primary: "#6D28D9",
+    raspadinhaCopy:
+      "Raspou, achou, ganhou! Digite seu código para validar seu prêmio.",
   },
   categories: [
     { id: "promos", name: "Promoções" },
-    { id: "acai", name: "Açaí" },
+    { id: "acai", name: "Açaí no Copo" },
+    { id: "adicionais", name: "Adicionais" },
   ],
-  addons: [
-    { id: "granola", name: "Granola", price: 2 },
-    { id: "nutella", name: "Nutella", price: 4.5 },
-  ],
+  addons: [{ id: "granola", name: "Granola", price: 2 }],
   products: [
     {
       id: "acai-330",
       category: "acai",
       name: "Açaí 330 ml",
-      desc: "Cremoso, perfeito para o dia.",
+      desc: "Base cremosa de açaí. Escolha seus adicionais.",
       price: 14.9,
       img: "",
       tags: ["popular"],
@@ -44,596 +42,770 @@ const defaultConfig = {
       ],
     },
   ],
-  coupons: {
-    ROXO10: { type: "percent", value: 10, label: "10% OFF aplicado" },
-  },
+  coupons: { ROXO10: { type: "percent", value: 10, label: "10% de desconto" } },
 };
 
-/** utils */
-const clone = (x) => JSON.parse(JSON.stringify(x));
+/** ===============
+ *  Normalização
+ *  =============== */
+// util para garantir formatos válidos
+function normalizeConfig(any) {
+  const base = {
+    store: {},
+    categories: [],
+    addons: [],
+    products: [],
+    coupons: {},
+  };
+  const c = { ...base, ...(any || {}) };
 
-/** =========================
- *  PÁGINA
- * ========================= */
-export default function Admin() {
-  // gate simples com PIN
-  const [ok, setOk] = useState(false);
-  const [pinInput, setPinInput] = useState("");
+  // objetos
+  c.store = { ...(c.store || {}) };
+  c.coupons = { ...(c.coupons || {}) };
+
+  // arrays (sempre array)
+  c.categories = Array.isArray(c.categories) ? c.categories : [];
+  c.addons = Array.isArray(c.addons) ? c.addons : [];
+  c.products = Array.isArray(c.products) ? c.products : [];
+
+  // normaliza items internos:
+  c.categories = c.categories.map((x) => ({
+    id: String(x?.id || ""),
+    name: String(x?.name || ""),
+  }));
+  c.addons = c.addons.map((x) => ({
+    id: String(x?.id || ""),
+    name: String(x?.name || ""),
+    price: Number(x?.price || 0),
+  }));
+  c.products = c.products.map((p) => ({
+    id: String(p?.id || ""),
+    category: String(p?.category || ""),
+    name: String(p?.name || ""),
+    desc: String(p?.desc || ""),
+    price: Number(p?.price || 0),
+    img: String(p?.img || ""),
+    tags: Array.isArray(p?.tags) ? p.tags.filter(Boolean) : [],
+    sizes: Array.isArray(p?.sizes)
+      ? p.sizes.map((s) => ({
+          code: String(s?.code || ""),
+          label: String(s?.label || ""),
+          price: Number(s?.price || 0),
+        }))
+      : [],
+  }));
+
+  return c;
+}
+
+/** ===============
+ *  Component raiz
+ *  =============== */
+export default function AdminPage() {
+  /** Gate de PIN (somente client) */
+  const [pinOk, setPinOk] = useState(false);
+  const [pin, setPin] = useState("");
 
   useEffect(() => {
-    if (localStorage.getItem("ilumo_admin_ok") === "1") setOk(true);
+    try {
+      const cached = localStorage.getItem(ADMIN_OK_KEY);
+      if (cached === "1") setPinOk(true);
+    } catch {}
   }, []);
 
-  function enter(e) {
+  function handlePinSubmit(e) {
     e.preventDefault();
-    if (!PIN) {
-      alert("Defina NEXT_PUBLIC_ADMIN_PIN no .env do Railway.");
-      return;
+    if (!PIN_ENV) {
+      alert(
+        "Defina a variável NEXT_PUBLIC_ADMIN_PIN no ambiente para proteger o painel."
+      );
     }
-    if (pinInput === PIN) {
-      localStorage.setItem("ilumo_admin_ok", "1");
-      setOk(true);
+    if (pin && PIN_ENV && pin === PIN_ENV) {
+      localStorage.setItem(ADMIN_OK_KEY, "1");
+      setPinOk(true);
     } else {
-      alert("PIN inválido");
+      alert("PIN inválido.");
     }
   }
 
-  if (!ok) {
+  if (!pinOk) {
     return (
-      <div className="min-h-screen grid place-items-center bg-[#f7f7fb]">
-        <form onSubmit={enter} className="w-full max-w-sm bg-white p-6 rounded-2xl border border-[#e5e7eb]">
-          <h1 className="text-xl font-semibold">Painel Ilumo</h1>
-          <p className="text-sm text-[#64748b]">Digite o PIN para continuar</p>
+      <div className="min-h-screen grid place-items-center bg-[#f7f7fb] text-[#0f172a]">
+        <form
+          onSubmit={handlePinSubmit}
+          className="rounded-2xl bg-white border border-[#e5e7eb] p-6 w-full max-w-sm shadow-sm"
+        >
+          <h1 className="text-xl font-semibold">Acesso ao Painel</h1>
+          <p className="text-sm text-[#475569] mt-1">Digite o PIN para entrar</p>
           <input
-            className="input mt-4"
-            placeholder="PIN"
             type="password"
-            value={pinInput}
-            onChange={(e) => setPinInput(e.target.value)}
+            autoFocus
+            value={pin}
+            onChange={(e) => setPin(e.target.value)}
+            className="w-full mt-4 px-3 py-2 rounded-xl border border-[#e5e7eb] outline-none bg-white"
+            placeholder="PIN"
           />
-          <button className="btn-primary w-full mt-3">Entrar</button>
-          <a href="/" className="block text-center text-sm text-[#64748b] mt-3 underline">voltar</a>
-          <Style />
+          <button className="mt-3 w-full rounded-xl bg-[#6D28D9] text-white py-2.5 hover:opacity-90">
+            Entrar
+          </button>
+          <a
+            href="/"
+            className="block mt-3 text-center text-sm text-[#475569] underline"
+          >
+            Voltar ao site
+          </a>
         </form>
       </div>
     );
   }
 
-  // estado do painel
-  const [cfg, setCfg] = useState(defaultConfig);
-  const [tab, setTab] = useState("loja");
+  /** Estado da config */
+  const [cfg, setCfg] = useState(normalizeConfig(defaultConfig));
 
-  // carrega se existir
+  /** Carregamento + rota de limpeza */
   useEffect(() => {
-    const raw = localStorage.getItem(LS_KEY);
-    if (raw) {
-      try {
-        setCfg({ ...clone(defaultConfig), ...JSON.parse(raw) });
-      } catch {
-        // se quebrar, ignora e segue com default
+    // suporte a /admin?clear=1 para limpar storage corrompido
+    if (typeof window !== "undefined") {
+      const u = new URL(window.location.href);
+      if (u.searchParams.get("clear") === "1") {
+        localStorage.removeItem(LS_KEY);
+        localStorage.removeItem(ADMIN_OK_KEY);
+        u.searchParams.delete("clear");
+        window.location.replace(u.toString());
+        return;
       }
+    }
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        setCfg(normalizeConfig({ ...defaultConfig, ...parsed }));
+      } else {
+        setCfg(normalizeConfig(defaultConfig));
+      }
+    } catch {
+      setCfg(normalizeConfig(defaultConfig));
     }
   }, []);
 
+  /** Util para atualizar subestruturas sem mutar raiz */
+  function updateArray(path, updater) {
+    setCfg((prev) => {
+      const next = structuredClone(prev);
+      const ref = path.split(".").reduce((acc, key) => acc[key], next);
+      updater(ref);
+      return normalizeConfig(next);
+    });
+  }
+
+  /** Persistência */
   function save() {
     localStorage.setItem(LS_KEY, JSON.stringify(cfg));
-    alert("✅ Salvo!");
+    alert("✅ Configurações salvas!");
   }
-  function exportJson() {
-    const blob = new Blob([JSON.stringify(cfg, null, 2)], { type: "application/json" });
+  function downloadJson() {
+    const blob = new Blob([JSON.stringify(cfg, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "ilumo-config.json";
+    a.download = "ilumo_cfg_v1.json";
     a.click();
     URL.revokeObjectURL(url);
   }
-  function importJson(e) {
+  function uploadJson(e) {
     const f = e.target.files?.[0];
     if (!f) return;
-    const r = new FileReader();
-    r.onload = () => {
+    const reader = new FileReader();
+    reader.onload = () => {
       try {
-        const next = JSON.parse(String(r.result));
-        setCfg({ ...clone(defaultConfig), ...next });
-        alert("Config importada (lembre de salvar)!");
+        const parsed = JSON.parse(String(reader.result));
+        setCfg(normalizeConfig(parsed));
+        alert("✅ Config carregada (salve para aplicar)!");
       } catch {
-        alert("Arquivo inválido");
+        alert("Arquivo inválido.");
       }
     };
-    r.readAsText(f);
+    reader.readAsText(f);
   }
   function clearAll() {
-    if (!confirm("Limpar TUDO?")) return;
+    if (!confirm("Tem certeza que deseja limpar TODA a configuração?")) return;
     localStorage.removeItem(LS_KEY);
-    setCfg(clone(defaultConfig));
+    location.reload();
   }
 
-  // helpers mutação
-  const up = (path, updater) =>
-    setCfg((prev) => {
-      const next = clone(prev);
-      const ref = path.split(".").reduce((acc, key) => acc[key], next);
-      updater(ref);
-      return next;
-    });
-
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-[#0f172a]">
-      {/* topo */}
-      <header className="sticky top-0 bg-white/90 backdrop-blur border-b border-[#e5e7eb]">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-2">
-          <a href="/" className="btn">← voltar</a>
+    <div className="min-h-screen bg-[#f7f7fb] text-[#0f172a]">
+      <header className="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-[#e5e7eb]">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
+          <a
+            href="/"
+            className="px-3 py-1.5 rounded-xl border border-[#e5e7eb] bg-white hover:bg-[#f1f5f9]"
+          >
+            ← Voltar
+          </a>
           <div className="mx-auto text-center">
-            <div className="font-medium">Painel Ilumo</div>
-            <div className="text-xs text-[#64748b]">edite loja, cardápio e cupons</div>
+            <div className="text-sm">Painel • Ilumo</div>
+            <div className="text-xs text-[#475569]">Edite a loja e o cardápio</div>
           </div>
           <div className="flex gap-2">
-            <button className="btn" onClick={exportJson}>Exportar</button>
-            <label className="btn cursor-pointer">
-              Importar
-              <input className="hidden" type="file" accept="application/json" onChange={importJson} />
-            </label>
-            <button className="btn-primary" onClick={save}>Salvar</button>
-          </div>
-        </div>
-        <div className="max-w-6xl mx-auto px-4 pb-3 flex gap-2 flex-wrap">
-          {[
-            ["loja", "Loja"],
-            ["imagens", "Imagens"],
-            ["categorias", "Categorias"],
-            ["produtos", "Produtos"],
-            ["adicionais", "Adicionais"],
-            ["cupons", "Cupons"],
-            ["backup", "Backup"],
-          ].map(([k, label]) => (
             <button
-              key={k}
-              onClick={() => setTab(k)}
-              className={`px-3 py-1.5 rounded-xl border ${
-                tab === k ? "bg-[#ede9fe] border-[#d9d6fe]" : "bg-white border-[#e5e7eb]"
-              }`}
+              onClick={downloadJson}
+              className="px-3 py-1.5 rounded-xl border border-[#e5e7eb] bg-white hover:bg-[#f1f5f9]"
             >
-              {label}
+              Exportar
             </button>
-          ))}
+            <label className="px-3 py-1.5 rounded-xl border border-[#e5e7eb] bg-white hover:bg-[#f1f5f9] cursor-pointer">
+              Importar
+              <input
+                type="file"
+                accept="application/json"
+                onChange={uploadJson}
+                className="hidden"
+              />
+            </label>
+            <button
+              onClick={save}
+              className="px-3 py-1.5 rounded-xl bg-[#6D28D9] text-white hover:opacity-90"
+            >
+              Salvar
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* conteúdo */}
-      <main className="max-w-6xl mx-auto p-4 grid gap-6">
-        {tab === "loja" && (
-          <Card title="Informações da loja">
-            <div className="grid md:grid-cols-2 gap-3">
-              <Field label="Nome da loja">
+      <main className="max-w-6xl mx-auto p-4 grid lg:grid-cols-2 gap-6">
+        {/* LOJA */}
+        <section className="rounded-2xl bg-white border border-[#e5e7eb] p-4 shadow-sm">
+          <h2 className="text-lg font-semibold">Loja</h2>
+          <div className="mt-3 grid gap-2">
+            <label className="text-sm">Nome</label>
+            <input
+              className="input"
+              value={cfg.store.name || ""}
+              onChange={(e) =>
+                setCfg({ ...cfg, store: { ...cfg.store, name: e.target.value } })
+              }
+            />
+
+            <label className="text-sm">WhatsApp (somente dígitos)</label>
+            <input
+              className="input"
+              value={cfg.store.whatsapp || ""}
+              onChange={(e) =>
+                setCfg({
+                  ...cfg,
+                  store: { ...cfg.store, whatsapp: e.target.value },
+                })
+              }
+            />
+
+            <label className="text-sm">Instagram</label>
+            <input
+              className="input"
+              value={cfg.store.instagram || ""}
+              onChange={(e) =>
+                setCfg({
+                  ...cfg,
+                  store: { ...cfg.store, instagram: e.target.value },
+                })
+              }
+            />
+
+            <label className="text-sm">Horário</label>
+            <input
+              className="input"
+              value={cfg.store.deliveryHours || ""}
+              onChange={(e) =>
+                setCfg({
+                  ...cfg,
+                  store: { ...cfg.store, deliveryHours: e.target.value },
+                })
+              }
+            />
+
+            <label className="text-sm">Banner (URL/DataURL)</label>
+            <input
+              className="input"
+              value={cfg.store.bannerUrl || ""}
+              onChange={(e) =>
+                setCfg({
+                  ...cfg,
+                  store: { ...cfg.store, bannerUrl: e.target.value },
+                })
+              }
+            />
+
+            <label className="text-sm">Logo (URL/DataURL)</label>
+            <input
+              className="input"
+              value={cfg.store.logoUrl || ""}
+              onChange={(e) =>
+                setCfg({
+                  ...cfg,
+                  store: { ...cfg.store, logoUrl: e.target.value },
+                })
+              }
+            />
+
+            <label className="text-sm">Nota de loja fechada</label>
+            <input
+              className="input"
+              value={cfg.store.closedNote || ""}
+              onChange={(e) =>
+                setCfg({
+                  ...cfg,
+                  store: { ...cfg.store, closedNote: e.target.value },
+                })
+              }
+            />
+
+            <label className="text-sm">Texto da raspadinha</label>
+            <textarea
+              className="input h-24"
+              value={cfg.store.raspadinhaCopy || ""}
+              onChange={(e) =>
+                setCfg({
+                  ...cfg,
+                  store: { ...cfg.store, raspadinhaCopy: e.target.value },
+                })
+              }
+            />
+          </div>
+        </section>
+
+        {/* CATEGORIAS */}
+        <section className="rounded-2xl bg-white border border-[#e5e7eb] p-4 shadow-sm">
+          <h2 className="text-lg font-semibold">Categorias</h2>
+          <div className="mt-3 space-y-2">
+            {(cfg.categories || []).map((c, idx) => (
+              <div
+                key={idx}
+                className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center"
+              >
                 <input
                   className="input"
-                  value={cfg.store.name}
-                  onChange={(e) => setCfg({ ...cfg, store: { ...cfg.store, name: e.target.value } })}
+                  placeholder="id"
+                  value={c.id}
+                  onChange={(e) =>
+                    updateArray("categories", (arr) => {
+                      arr[idx].id = e.target.value;
+                    })
+                  }
                 />
-              </Field>
-              <Field label="WhatsApp">
                 <input
                   className="input"
-                  value={cfg.store.whatsapp}
-                  onChange={(e) => setCfg({ ...cfg, store: { ...cfg.store, whatsapp: e.target.value } })}
+                  placeholder="Nome"
+                  value={c.name}
+                  onChange={(e) =>
+                    updateArray("categories", (arr) => {
+                      arr[idx].name = e.target.value;
+                    })
+                  }
                 />
-              </Field>
-              <Field label="Instagram">
-                <input
-                  className="input"
-                  value={cfg.store.instagram}
-                  onChange={(e) => setCfg({ ...cfg, store: { ...cfg.store, instagram: e.target.value } })}
-                />
-              </Field>
-              <Field label="Horário de atendimento">
-                <input
-                  className="input"
-                  value={cfg.store.deliveryHours}
-                  onChange={(e) => setCfg({ ...cfg, store: { ...cfg.store, deliveryHours: e.target.value } })}
-                />
-              </Field>
-              <Field label="Tema (somente visual)">
-                <select
-                  className="input"
-                  value={cfg.store.theme}
-                  onChange={(e) => setCfg({ ...cfg, store: { ...cfg.store, theme: e.target.value } })}
+                <button
+                  className="btn"
+                  onClick={() =>
+                    updateArray("categories", (arr) => arr.splice(idx, 1))
+                  }
                 >
-                  <option value="light">Claro</option>
-                  <option value="dark">Escuro</option>
-                </select>
-              </Field>
-              <Field label="Cor primária">
-                <input
-                  type="color"
-                  className="input"
-                  value={cfg.store.primary}
-                  onChange={(e) => setCfg({ ...cfg, store: { ...cfg.store, primary: e.target.value } })}
-                />
-              </Field>
-              <Field label="Aviso de loja fechada (opcional)">
-                <input
-                  className="input"
-                  value={cfg.store.closedNote}
-                  onChange={(e) => setCfg({ ...cfg, store: { ...cfg.store, closedNote: e.target.value } })}
-                />
-              </Field>
-              <Field label="Texto da raspadinha">
-                <input
-                  className="input"
-                  value={cfg.store.raspadinhaCopy}
-                  onChange={(e) => setCfg({ ...cfg, store: { ...cfg.store, raspadinhaCopy: e.target.value } })}
-                />
-              </Field>
-            </div>
-          </Card>
-        )}
-
-        {tab === "imagens" && (
-          <Card title="Imagens">
-            <div className="grid md:grid-cols-2 gap-3">
-              <Field label="URL do Banner (ou DataURL)">
-                <input
-                  className="input"
-                  value={cfg.store.bannerUrl}
-                  onChange={(e) => setCfg({ ...cfg, store: { ...cfg.store, bannerUrl: e.target.value } })}
-                />
-              </Field>
-              <Field label="URL da Logo (ou DataURL)">
-                <input
-                  className="input"
-                  value={cfg.store.logoUrl}
-                  onChange={(e) => setCfg({ ...cfg, store: { ...cfg.store, logoUrl: e.target.value } })}
-                />
-              </Field>
-            </div>
-            <div className="grid md:grid-cols-2 gap-4 mt-3">
-              <ImgPreview url={cfg.store.bannerUrl} label="Prévia Banner" />
-              <ImgPreview url={cfg.store.logoUrl} label="Prévia Logo" />
-            </div>
-          </Card>
-        )}
-
-        {tab === "categorias" && (
-          <Card title="Categorias">
-            <div className="space-y-2">
-              {cfg.categories.map((c, i) => (
-                <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
-                  <input
-                    className="input"
-                    placeholder="id"
-                    value={c.id}
-                    onChange={(e) => up("categories", (arr) => (arr[i].id = e.target.value))}
-                  />
-                  <input
-                    className="input"
-                    placeholder="Nome"
-                    value={c.name}
-                    onChange={(e) => up("categories", (arr) => (arr[i].name = e.target.value))}
-                  />
-                  <button className="btn" onClick={() => up("categories", (arr) => arr.splice(i, 1))}>
-                    Remover
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div className="mt-3">
-              <button className="btn-primary" onClick={() => up("categories", (arr) => arr.push({ id: "", name: "" }))}>
-                + Adicionar categoria
-              </button>
-            </div>
-          </Card>
-        )}
-
-        {tab === "adicionais" && (
-          <Card title="Adicionais (complementos)">
-            <div className="space-y-2">
-              {cfg.addons.map((a, i) => (
-                <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center">
-                  <input
-                    className="input"
-                    placeholder="id"
-                    value={a.id}
-                    onChange={(e) => up("addons", (arr) => (arr[i].id = e.target.value))}
-                  />
-                  <input
-                    className="input"
-                    placeholder="Nome"
-                    value={a.name}
-                    onChange={(e) => up("addons", (arr) => (arr[i].name = e.target.value))}
-                  />
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="input"
-                    placeholder="Preço"
-                    value={a.price}
-                    onChange={(e) => up("addons", (arr) => (arr[i].price = Number(e.target.value || 0)))}
-                  />
-                  <button className="btn" onClick={() => up("addons", (arr) => arr.splice(i, 1))}>
-                    Remover
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div className="mt-3">
-              <button
-                className="btn-primary"
-                onClick={() => up("addons", (arr) => arr.push({ id: "", name: "", price: 0 }))}
-              >
-                + Adicionar adicional
-              </button>
-            </div>
-          </Card>
-        )}
-
-        {tab === "produtos" && (
-          <Card title="Produtos">
-            <div className="space-y-4">
-              {cfg.products.map((p, i) => (
-                <div key={i} className="p-3 rounded-xl border border-[#e5e7eb] bg-white">
-                  <div className="grid md:grid-cols-2 gap-3">
-                    <Field label="ID">
-                      <input className="input" value={p.id} onChange={(e) => up("products", (arr) => (arr[i].id = e.target.value))} />
-                    </Field>
-                    <Field label="Categoria (id)">
-                      <input
-                        className="input"
-                        value={p.category}
-                        onChange={(e) => up("products", (arr) => (arr[i].category = e.target.value))}
-                      />
-                    </Field>
-                    <Field label="Nome">
-                      <input className="input" value={p.name} onChange={(e) => up("products", (arr) => (arr[i].name = e.target.value))} />
-                    </Field>
-                    <Field label="Preço base">
-                      <input
-                        type="number"
-                        step="0.01"
-                        className="input"
-                        value={p.price}
-                        onChange={(e) => up("products", (arr) => (arr[i].price = Number(e.target.value || 0)))}
-                      />
-                    </Field>
-                    <Field label="Imagem (URL)">
-                      <input className="input" value={p.img || ""} onChange={(e) => up("products", (arr) => (arr[i].img = e.target.value))} />
-                    </Field>
-                    <Field label="Tags (vírgula)">
-                      <input
-                        className="input"
-                        value={(p.tags || []).join(",")}
-                        onChange={(e) => up("products", (arr) => (arr[i].tags = e.target.value.split(",").map((s) => s.trim()).filter(Boolean)))}
-                      />
-                    </Field>
-                    <Field label="Descrição" wide>
-                      <textarea
-                        rows={3}
-                        className="input"
-                        value={p.desc || ""}
-                        onChange={(e) => up("products", (arr) => (arr[i].desc = e.target.value))}
-                      />
-                    </Field>
-                  </div>
-
-                  <div className="mt-3">
-                    <div className="font-medium mb-1">Tamanhos (opcional)</div>
-                    <div className="space-y-2">
-                      {(p.sizes || []).map((s, si) => (
-                        <div key={si} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center">
-                          <input
-                            className="input"
-                            placeholder="code"
-                            value={s.code}
-                            onChange={(e) => up("products", (arr) => (arr[i].sizes[si].code = e.target.value))}
-                          />
-                          <input
-                            className="input"
-                            placeholder="label"
-                            value={s.label}
-                            onChange={(e) => up("products", (arr) => (arr[i].sizes[si].label = e.target.value))}
-                          />
-                          <input
-                            type="number"
-                            step="0.01"
-                            className="input"
-                            placeholder="price"
-                            value={s.price}
-                            onChange={(e) => up("products", (arr) => (arr[i].sizes[si].price = Number(e.target.value || 0)))}
-                          />
-                          <button className="btn" onClick={() => up("products", (arr) => arr[i].sizes.splice(si, 1))}>
-                            remover
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                    <button
-                      className="btn mt-2"
-                      onClick={() => up("products", (arr) => {
-                        arr[i].sizes = arr[i].sizes || [];
-                        arr[i].sizes.push({ code: "", label: "", price: 0 });
-                      })}
-                    >
-                      + adicionar tamanho
-                    </button>
-                  </div>
-
-                  <div className="mt-3 flex justify-between">
-                    <button className="btn" onClick={() => up("products", (arr) => arr.splice(i, 1))}>
-                      Remover produto
-                    </button>
-                    <ImgPreview url={p.img} label="Prévia" small />
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-3">
-              <button
-                className="btn-primary"
-                onClick={() =>
-                  up("products", (arr) =>
-                    arr.push({ id: "", category: "", name: "", desc: "", price: 0, img: "", tags: [], sizes: [] })
-                  )
-                }
-              >
-                + Adicionar produto
-              </button>
-            </div>
-          </Card>
-        )}
-
-        {tab === "cupons" && (
-          <Card title="Cupons / Raspadinha">
-            <CouponEditor cfg={cfg} setCfg={setCfg} />
-          </Card>
-        )}
-
-        {tab === "backup" && (
-          <Card title="Backup / Restauração">
-            <div className="flex flex-wrap gap-2">
-              <button className="btn" onClick={exportJson}>Exportar JSON</button>
-              <label className="btn cursor-pointer">
-                Importar JSON
-                <input className="hidden" type="file" accept="application/json" onChange={importJson} />
-              </label>
-              <button className="btn" onClick={clearAll}>Limpar tudo</button>
-              <button className="btn-primary" onClick={save}>Salvar alterações</button>
-            </div>
-            <p className="text-sm text-[#64748b] mt-2">
-              O conteúdo é salvo somente no navegador (localStorage). O site público lê esses dados.
-            </p>
-          </Card>
-        )}
-      </main>
-
-      <Style />
-    </div>
-  );
-}
-
-/** =========================
- *  SUB-COMPONENTES
- * ========================= */
-function Card({ title, children }) {
-  return (
-    <section className="bg-white p-4 rounded-2xl border border-[#e5e7eb]">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">{title}</h2>
-      </div>
-      <div className="mt-3">{children}</div>
-    </section>
-  );
-}
-
-function Field({ label, children, wide }) {
-  return (
-    <label className={`${wide ? "md:col-span-2" : ""}`}>
-      <div className="text-sm text-[#475569] mb-1">{label}</div>
-      {children}
-    </label>
-  );
-}
-
-function ImgPreview({ url, label, small }) {
-  return (
-    <div>
-      <div className="text-sm text-[#475569] mb-1">{label}</div>
-      <div
-        className={`rounded-xl border border-[#e5e7eb] bg-white grid place-items-center overflow-hidden ${
-          small ? "w-40 h-24" : "w-full h-40"
-        }`}
-      >
-        {url ? <img src={url} alt="" className="object-cover w-full h-full" /> : <span className="text-xs text-[#94a3b8]">sem imagem</span>}
-      </div>
-    </div>
-  );
-}
-
-function CouponEditor({ cfg, setCfg }) {
-  const entries = useMemo(() => Object.entries(cfg.coupons || {}), [cfg.coupons]);
-
-  const setField = (code, k, v) =>
-    setCfg((prev) => {
-      const next = clone(prev);
-      if (!next.coupons) next.coupons = {};
-      if (!next.coupons[code]) next.coupons[code] = {};
-      next.coupons[code][k] = v;
-      return next;
-    });
-
-  const removeCoupon = (code) =>
-    setCfg((prev) => {
-      const next = clone(prev);
-      delete next.coupons[code];
-      return next;
-    });
-
-  const addCoupon = () => {
-    const code = prompt("Código (ex.: ROXO10)");
-    if (!code) return;
-    setCfg((prev) => {
-      const next = clone(prev);
-      next.coupons = next.coupons || {};
-      next.coupons[code.toUpperCase()] = { type: "percent", value: 10, label: "10% OFF" };
-      return next;
-    });
-  };
-
-  return (
-    <div>
-      <div className="space-y-2">
-        {entries.map(([code, c]) => (
-          <div key={code} className="p-3 rounded-xl border border-[#e5e7eb] bg-[#fafafa]">
-            <div className="font-semibold">{code}</div>
-            <div className="grid md:grid-cols-3 gap-2 mt-2">
-              <select className="input" value={c.type || "percent"} onChange={(e) => setField(code, "type", e.target.value)}>
-                <option value="percent">percent</option>
-                <option value="msg">msg</option>
-              </select>
-              <input
-                className="input"
-                type="number"
-                step="0.01"
-                value={c.value || 0}
-                onChange={(e) => setField(code, "value", Number(e.target.value || 0))}
-              />
-              <input className="input" value={c.label || ""} onChange={(e) => setField(code, "label", e.target.value)} />
-            </div>
-            <button className="btn mt-2" onClick={() => removeCoupon(code)}>
-              Remover
+                  Excluir
+                </button>
+              </div>
+            ))}
+            <button
+              className="btn-primary"
+              onClick={() =>
+                updateArray("categories", (arr) =>
+                  arr.push({ id: "", name: "" })
+                )
+              }
+            >
+              + Adicionar categoria
             </button>
           </div>
-        ))}
-      </div>
-      <button className="btn-primary mt-3" onClick={addCoupon}>
+        </section>
+
+        {/* ADICIONAIS */}
+        <section className="rounded-2xl bg-white border border-[#e5e7eb] p-4 shadow-sm">
+          <h2 className="text-lg font-semibold">Adicionais</h2>
+          <div className="mt-3 space-y-2">
+            {(cfg.addons || []).map((a, idx) => (
+              <div
+                key={idx}
+                className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center"
+              >
+                <input
+                  className="input"
+                  placeholder="id"
+                  value={a.id}
+                  onChange={(e) =>
+                    updateArray("addons", (arr) => {
+                      arr[idx].id = e.target.value;
+                    })
+                  }
+                />
+                <input
+                  className="input"
+                  placeholder="Nome"
+                  value={a.name}
+                  onChange={(e) =>
+                    updateArray("addons", (arr) => {
+                      arr[idx].name = e.target.value;
+                    })
+                  }
+                />
+                <input
+                  type="number"
+                  className="input"
+                  placeholder="Preço"
+                  value={a.price}
+                  onChange={(e) =>
+                    updateArray("addons", (arr) => {
+                      arr[idx].price = Number(e.target.value || 0);
+                    })
+                  }
+                />
+                <button
+                  className="btn"
+                  onClick={() =>
+                    updateArray("addons", (arr) => arr.splice(idx, 1))
+                  }
+                >
+                  Excluir
+                </button>
+              </div>
+            ))}
+            <button
+              className="btn-primary"
+              onClick={() =>
+                updateArray("addons", (arr) =>
+                  arr.push({ id: "", name: "", price: 0 })
+                )
+              }
+            >
+              + Adicionar adicional
+            </button>
+          </div>
+        </section>
+
+        {/* PRODUTOS */}
+        <section className="rounded-2xl bg-white border border-[#e5e7eb] p-4 shadow-sm lg:col-span-2">
+          <h2 className="text-lg font-semibold">Produtos</h2>
+          <div className="mt-3 space-y-4">
+            {(cfg.products || []).map((p, idx) => (
+              <div
+                key={idx}
+                className="rounded-xl border border-[#e5e7eb] p-3 bg-[#fafafa]"
+              >
+                <div className="grid md:grid-cols-2 gap-3">
+                  <div className="grid gap-2">
+                    <label className="text-sm">ID</label>
+                    <input
+                      className="input"
+                      value={p.id}
+                      onChange={(e) =>
+                        updateArray("products", (arr) => {
+                          arr[idx].id = e.target.value;
+                        })
+                      }
+                    />
+                    <label className="text-sm">Categoria (id)</label>
+                    <input
+                      className="input"
+                      value={p.category}
+                      onChange={(e) =>
+                        updateArray("products", (arr) => {
+                          arr[idx].category = e.target.value;
+                        })
+                      }
+                    />
+                    <label className="text-sm">Nome</label>
+                    <input
+                      className="input"
+                      value={p.name}
+                      onChange={(e) =>
+                        updateArray("products", (arr) => {
+                          arr[idx].name = e.target.value;
+                        })
+                      }
+                    />
+                    <label className="text-sm">Descrição</label>
+                    <textarea
+                      className="input h-20"
+                      value={p.desc || ""}
+                      onChange={(e) =>
+                        updateArray("products", (arr) => {
+                          arr[idx].desc = e.target.value;
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <label className="text-sm">Preço base</label>
+                    <input
+                      type="number"
+                      className="input"
+                      value={p.price}
+                      onChange={(e) =>
+                        updateArray("products", (arr) => {
+                          arr[idx].price = Number(e.target.value || 0);
+                        })
+                      }
+                    />
+                    <label className="text-sm">Imagem (URL/DataURL)</label>
+                    <input
+                      className="input"
+                      value={p.img}
+                      onChange={(e) =>
+                        updateArray("products", (arr) => {
+                          arr[idx].img = e.target.value;
+                        })
+                      }
+                    />
+                    <label className="text-sm">Tags (vírgula)</label>
+                    <input
+                      className="input"
+                      value={(p.tags || []).join(",")}
+                      onChange={(e) =>
+                        updateArray("products", (arr) => {
+                          arr[idx].tags = e.target.value
+                            .split(",")
+                            .map((s) => s.trim())
+                            .filter(Boolean);
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3">
+                  <div className="font-medium">Tamanhos (opcional)</div>
+                  <div className="mt-2 space-y-2">
+                    {(p.sizes || []).map((s, sidx) => (
+                      <div
+                        key={sidx}
+                        className="grid grid-cols-[1fr_2fr_1fr_auto] gap-2 items-center"
+                      >
+                        <input
+                          className="input"
+                          placeholder="code"
+                          value={s.code}
+                          onChange={(e) =>
+                            updateArray("products", (arr) => {
+                              arr[idx].sizes[sidx].code = e.target.value;
+                            })
+                          }
+                        />
+                        <input
+                          className="input"
+                          placeholder="label"
+                          value={s.label}
+                          onChange={(e) =>
+                            updateArray("products", (arr) => {
+                              arr[idx].sizes[sidx].label = e.target.value;
+                            })
+                          }
+                        />
+                        <input
+                          type="number"
+                          className="input"
+                          placeholder="price"
+                          value={s.price}
+                          onChange={(e) =>
+                            updateArray("products", (arr) => {
+                              arr[idx].sizes[sidx].price = Number(
+                                e.target.value || 0
+                              );
+                            })
+                          }
+                        />
+                        <button
+                          className="btn"
+                          onClick={() =>
+                            updateArray("products", (arr) => {
+                              arr[idx].sizes.splice(sidx, 1);
+                            })
+                          }
+                        >
+                          Remover
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      className="btn"
+                      onClick={() =>
+                        updateArray("products", (arr) => {
+                          arr[idx].sizes = arr[idx].sizes || [];
+                          arr[idx].sizes.push({ code: "", label: "", price: 0 });
+                        })
+                      }
+                    >
+                      + Adicionar tamanho
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex justify-between">
+                  <button
+                    className="btn"
+                    onClick={() =>
+                      updateArray("products", (arr) => arr.splice(idx, 1))
+                    }
+                  >
+                    Excluir produto
+                  </button>
+                </div>
+              </div>
+            ))}
+            <button
+              className="btn-primary"
+              onClick={() =>
+                updateArray("products", (arr) =>
+                  arr.push({
+                    id: "",
+                    category: "",
+                    name: "",
+                    desc: "",
+                    price: 0,
+                    img: "",
+                    tags: [],
+                    sizes: [],
+                  })
+                )
+              }
+            >
+              + Adicionar produto
+            </button>
+          </div>
+        </section>
+
+        {/* CUPONS */}
+        <section className="rounded-2xl bg-white border border-[#e5e7eb] p-4 shadow-sm">
+          <h2 className="text-lg font-semibold">Cupons / Raspadinha</h2>
+          <CouponEditor cfg={cfg} setCfg={setCfg} />
+          <div className="mt-4 flex gap-2">
+            <button onClick={save} className="btn-primary">
+              Salvar
+            </button>
+            <button onClick={clearAll} className="btn">
+              Limpar tudo
+            </button>
+          </div>
+        </section>
+      </main>
+
+      {/* estilos utilitários simples */}
+      <style jsx global>{`
+        .input {
+          width: 100%;
+          padding: 10px 12px;
+          border-radius: 12px;
+          border: 1px solid #e5e7eb;
+          background: #fff;
+          outline: none;
+        }
+        .btn {
+          padding: 8px 12px;
+          border-radius: 10px;
+          border: 1px solid #e5e7eb;
+          background: #fff;
+        }
+        .btn-primary {
+          padding: 8px 12px;
+          border-radius: 10px;
+          background: #6d28d9;
+          color: #fff;
+        }
+      `}</style>
+    </div>
+  );
+}
+
+/** ==================
+ *  Editor de cupons
+ *  ================== */
+function CouponEditor({ cfg, setCfg }) {
+  const entries = useMemo(
+    () => Object.entries(cfg.coupons || {}),
+    [cfg.coupons]
+  );
+
+  function setField(code, key, value) {
+    setCfg((prev) => {
+      const next = structuredClone(prev);
+      if (!next.coupons) next.coupons = {};
+      if (!next.coupons[code]) next.coupons[code] = {};
+      next.coupons[code][key] = value;
+      return normalizeConfig(next);
+    });
+  }
+
+  function addCoupon() {
+    const code = prompt("Código do cupom (ex.: ROXO10)");
+    if (!code) return;
+    setCfg((prev) => {
+      const next = structuredClone(prev);
+      if (!next.coupons) next.coupons = {};
+      next.coupons[code.toUpperCase()] = {
+        type: "percent",
+        value: 10,
+        label: "10% de desconto aplicado",
+      };
+      return normalizeConfig(next);
+    });
+  }
+
+  function removeCoupon(code) {
+    setCfg((prev) => {
+      const next = structuredClone(prev);
+      if (next.coupons) delete next.coupons[code];
+      return normalizeConfig(next);
+    });
+  }
+
+  return (
+    <div className="mt-3 space-y-3">
+      {entries.map(([code, c]) => (
+        <div
+          key={code}
+          className="rounded-xl border border-[#e5e7eb] p-3 bg-[#fafafa]"
+        >
+          <div className="font-semibold">{code}</div>
+          <div className="grid md:grid-cols-3 gap-2 mt-2">
+            <select
+              className="input"
+              value={c.type || "percent"}
+              onChange={(e) => setField(code, "type", e.target.value)}
+            >
+              <option value="percent">percent</option>
+              <option value="msg">msg</option>
+            </select>
+            <input
+              className="input"
+              type="number"
+              placeholder="valor (%)"
+              value={c.value ?? 0}
+              onChange={(e) => setField(code, "value", Number(e.target.value || 0))}
+            />
+            <input
+              className="input"
+              placeholder="label"
+              value={c.label || ""}
+              onChange={(e) => setField(code, "label", e.target.value)}
+            />
+          </div>
+          <div className="mt-2">
+            <button className="btn" onClick={() => removeCoupon(code)}>
+              Remover cupom
+            </button>
+          </div>
+        </div>
+      ))}
+      <button className="btn-primary" onClick={addCoupon}>
         + Adicionar cupom
       </button>
     </div>
-  );
-}
-
-function Style() {
-  return (
-    <style jsx global>{`
-      .input {
-        width: 100%;
-        padding: 10px 12px;
-        border-radius: 12px;
-        border: 1px solid #e5e7eb;
-        background: #fff;
-        outline: none;
-      }
-      .btn {
-        padding: 8px 12px;
-        border-radius: 10px;
-        border: 1px solid #e5e7eb;
-        background: #fff;
-      }
-      .btn-primary {
-        padding: 10px 14px;
-        border-radius: 10px;
-        background: #6D28D9;
-        color: #fff;
-      }
-    `}</style>
   );
 }
