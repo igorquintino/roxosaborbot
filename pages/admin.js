@@ -1,8 +1,22 @@
 // /pages/admin.js
 import React, { useEffect, useMemo, useState } from "react";
 
-const ADMIN_PIN_ENV =
-  process.env.NEXT_PUBLIC_ADMIN_PIN || process.env.ADMIN_PIN || "";
+/* =========================================================
+   Painel Admin (localStorage) – compatível com celulares
+   - Proteção via PIN: NEXT_PUBLIC_ADMIN_PIN
+   - Evita crash em navegadores sem structuredClone
+   ========================================================= */
+
+const LS_KEY = "rs_config_v1";
+const PIN_ENV = process.env.NEXT_PUBLIC_ADMIN_PIN || "";
+
+// Fallback seguro ao structuredClone (iOS/Android WebView antigas)
+const safeClone = (obj) => {
+  try {
+    if (typeof structuredClone === "function") return structuredClone(obj);
+  } catch {}
+  return JSON.parse(JSON.stringify(obj));
+};
 
 const EMPTY_PRODUCT = {
   id: "",
@@ -19,19 +33,20 @@ const EMPTY_ADDON = { id: "", name: "", price: 0 };
 const EMPTY_CATEGORY = { id: "", name: "" };
 
 export default function AdminPage() {
-  // --- Gate de PIN ---
+  // ---- Gate de PIN ----
   const [ok, setOk] = useState(false);
   const [pin, setPin] = useState("");
 
   useEffect(() => {
-    const cached = sessionStorage.getItem("rs_admin_ok");
+    if (typeof window === "undefined") return;
+    const cached = localStorage.getItem("rs_admin_ok");
     if (cached === "1") setOk(true);
   }, []);
 
   function checkPin(e) {
     e.preventDefault();
-    if (pin && ADMIN_PIN_ENV && pin === ADMIN_PIN_ENV) {
-      sessionStorage.setItem("rs_admin_ok", "1");
+    if (pin && PIN_ENV && pin === PIN_ENV) {
+      localStorage.setItem("rs_admin_ok", "1");
       setOk(true);
     } else {
       alert("PIN inválido.");
@@ -46,7 +61,9 @@ export default function AdminPage() {
           className="rounded-2xl bg-white border border-[#e5e7eb] p-6 w-full max-w-sm shadow-sm"
         >
           <h1 className="text-xl font-semibold">Acesso ao Painel</h1>
-          <p className="text-sm text-[#475569] mt-1">Digite o PIN para continuar</p>
+          <p className="text-sm text-[#475569] mt-1">
+            Digite o PIN para continuar
+          </p>
           <input
             type="password"
             autoFocus
@@ -58,7 +75,10 @@ export default function AdminPage() {
           <button className="mt-3 w-full rounded-xl bg-[#6D28D9] text-white py-2.5 hover:opacity-90">
             Entrar
           </button>
-          <a href="/" className="block mt-3 text-center text-sm text-[#475569] underline">
+          <a
+            href="/"
+            className="block mt-3 text-center text-sm text-[#475569] underline"
+          >
             Voltar ao site
           </a>
         </form>
@@ -66,61 +86,89 @@ export default function AdminPage() {
     );
   }
 
-  // --- Estado principal do painel ---
-  const [cfg, setCfg] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // ---- Estado da configuração ----
+  const [cfg, setCfg] = useState({
+    brand: {
+      name: "",
+      logoText: "",
+      colors: {
+        primary: "#6D28D9",
+        primaryDark: "#4C1D95",
+        accent: "#22C55E",
+      },
+    },
+    store: {
+      whatsapp: "",
+      instagram: "",
+      deliveryHours: "",
+      bannerUrl: "",
+      logoUrl: "",
+      closedNote: "",
+      raspadinhaCopy: "",
+    },
+    categories: [],
+    addons: [],
+    products: [],
+    coupons: {},
+  });
 
-  // carrega config do servidor
   useEffect(() => {
-    (async () => {
+    if (typeof window === "undefined") return;
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) {
       try {
-        const r = await fetch("/api/config");
-        const j = await r.json();
-        if (j?.ok) setCfg(j.data);
-      } catch (e) {
-        console.error(e);
-        alert("Não foi possível carregar a configuração.");
-      } finally {
-        setLoading(false);
+        setCfg(JSON.parse(raw));
+      } catch {
+        // ignore
       }
-    })();
+    }
   }, []);
 
-  async function saveToServer() {
-    if (!cfg) return;
-    try {
-      const r = await fetch("/api/config", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "x-admin-pin": pin || ADMIN_PIN_ENV,
-        },
-        body: JSON.stringify(cfg),
-      });
-      const j = await r.json();
-      if (!j?.ok) throw new Error(j?.error || "Falha ao salvar");
-      alert("✅ Config salva no servidor!");
-    } catch (e) {
-      console.error(e);
-      alert("Erro ao salvar: " + e.message);
-    }
+  function save() {
+    localStorage.setItem(LS_KEY, JSON.stringify(cfg));
+    alert("✅ Configurações salvas!");
+  }
+  function clearAll() {
+    if (!confirm("Tem certeza que deseja limpar TODA a configuração?")) return;
+    localStorage.removeItem(LS_KEY);
+    location.reload();
+  }
+  function downloadJson() {
+    const blob = new Blob([JSON.stringify(cfg, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "rs_config_v1.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  function uploadJson(e) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        setCfg(JSON.parse(String(reader.result)));
+        alert("✅ Config carregada (salve para aplicar)!");
+      } catch {
+        alert("Arquivo inválido.");
+      }
+    };
+    reader.readAsText(f);
   }
 
+  // Atualiza arrays profundamente com clone seguro
   function updateArray(path, updater) {
     setCfg((prev) => {
-      const next = structuredClone(prev);
-      const ref = path.split(".").reduce((acc, key) => acc[key], next);
+      const next = safeClone(prev);
+      const keys = path.split(".");
+      let ref = next;
+      for (let i = 0; i < keys.length; i++) ref = ref[keys[i]];
       updater(ref);
       return next;
     });
-  }
-
-  if (loading || !cfg) {
-    return (
-      <div className="min-h-screen grid place-items-center text-[#0f172a]">
-        Carregando…
-      </div>
-    );
   }
 
   return (
@@ -133,18 +181,6 @@ export default function AdminPage() {
           >
             ← Voltar
           </a>
-          <div className="mx-auto text-center">
-            <div className="text-sm">Painel • {cfg.brand?.name || "Loja"}</div>
-            <div className="text-xs text-[#475569]">Edite a loja e o cardápio</div>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={saveToServer}
-              className="px-3 py-1.5 rounded-xl bg-[#6D28D9] text-white hover:opacity-90"
-            >
-              Salvar
-            </button>
-          </div>
         </div>
       </header>
 
@@ -167,7 +203,10 @@ export default function AdminPage() {
               className="input"
               value={cfg.brand.logoText || ""}
               onChange={(e) =>
-                setCfg({ ...cfg, brand: { ...cfg.brand, logoText: e.target.value } })
+                setCfg({
+                  ...cfg,
+                  brand: { ...cfg.brand, logoText: e.target.value },
+                })
               }
             />
 
@@ -183,7 +222,10 @@ export default function AdminPage() {
                       ...cfg,
                       brand: {
                         ...cfg.brand,
-                        colors: { ...cfg.brand.colors, primary: e.target.value },
+                        colors: {
+                          ...cfg.brand.colors,
+                          primary: e.target.value,
+                        },
                       },
                     })
                   }
@@ -200,7 +242,10 @@ export default function AdminPage() {
                       ...cfg,
                       brand: {
                         ...cfg.brand,
-                        colors: { ...cfg.brand.colors, primaryDark: e.target.value },
+                        colors: {
+                          ...cfg.brand.colors,
+                          primaryDark: e.target.value,
+                        },
                       },
                     })
                   }
@@ -217,7 +262,10 @@ export default function AdminPage() {
                       ...cfg,
                       brand: {
                         ...cfg.brand,
-                        colors: { ...cfg.brand.colors, accent: e.target.value },
+                        colors: {
+                          ...cfg.brand.colors,
+                          accent: e.target.value,
+                        },
                       },
                     })
                   }
@@ -230,7 +278,10 @@ export default function AdminPage() {
               className="input"
               value={cfg.store.whatsapp || ""}
               onChange={(e) =>
-                setCfg({ ...cfg, store: { ...cfg.store, whatsapp: e.target.value } })
+                setCfg({
+                  ...cfg,
+                  store: { ...cfg.store, whatsapp: e.target.value },
+                })
               }
             />
 
@@ -239,7 +290,10 @@ export default function AdminPage() {
               className="input"
               value={cfg.store.instagram || ""}
               onChange={(e) =>
-                setCfg({ ...cfg, store: { ...cfg.store, instagram: e.target.value } })
+                setCfg({
+                  ...cfg,
+                  store: { ...cfg.store, instagram: e.target.value },
+                })
               }
             />
 
@@ -255,21 +309,27 @@ export default function AdminPage() {
               }
             />
 
-            <label className="text-sm">Banner (URL ou DataURL)</label>
+            <label className="text-sm">Banner (URL/DataURL)</label>
             <input
               className="input"
               value={cfg.store.bannerUrl || ""}
               onChange={(e) =>
-                setCfg({ ...cfg, store: { ...cfg.store, bannerUrl: e.target.value } })
+                setCfg({
+                  ...cfg,
+                  store: { ...cfg.store, bannerUrl: e.target.value },
+                })
               }
             />
 
-            <label className="text-sm">Logo (URL ou DataURL)</label>
+            <label className="text-sm">Logo (URL/DataURL)</label>
             <input
               className="input"
               value={cfg.store.logoUrl || ""}
               onChange={(e) =>
-                setCfg({ ...cfg, store: { ...cfg.store, logoUrl: e.target.value } })
+                setCfg({
+                  ...cfg,
+                  store: { ...cfg.store, logoUrl: e.target.value },
+                })
               }
             />
 
@@ -278,7 +338,10 @@ export default function AdminPage() {
               className="input"
               value={cfg.store.closedNote || ""}
               onChange={(e) =>
-                setCfg({ ...cfg, store: { ...cfg.store, closedNote: e.target.value } })
+                setCfg({
+                  ...cfg,
+                  store: { ...cfg.store, closedNote: e.target.value },
+                })
               }
             />
 
@@ -340,7 +403,9 @@ export default function AdminPage() {
             <button
               className="btn-primary"
               onClick={() =>
-                updateArray("categories", (arr) => arr.push({ ...EMPTY_CATEGORY }))
+                updateArray("categories", (arr) =>
+                  arr.push(safeClone(EMPTY_CATEGORY))
+                )
               }
             >
               + Adicionar categoria
@@ -401,7 +466,7 @@ export default function AdminPage() {
             <button
               className="btn-primary"
               onClick={() =>
-                updateArray("addons", (arr) => arr.push({ ...EMPTY_ADDON }))
+                updateArray("addons", (arr) => arr.push(safeClone(EMPTY_ADDON)))
               }
             >
               + Adicionar adicional
@@ -414,7 +479,10 @@ export default function AdminPage() {
           <h2 className="text-lg font-semibold">Produtos</h2>
           <div className="mt-3 space-y-4">
             {(cfg.products || []).map((p, idx) => (
-              <div key={idx} className="rounded-xl border border-[#e5e7eb] p-3 bg-[#fafafa]">
+              <div
+                key={idx}
+                className="rounded-xl border border-[#e5e7eb] p-3 bg-[#fafafa]"
+              >
                 <div className="grid md:grid-cols-2 gap-3">
                   <div className="grid gap-2">
                     <label className="text-sm">ID</label>
@@ -473,7 +541,7 @@ export default function AdminPage() {
                     <label className="text-sm">Imagem (URL/DataURL)</label>
                     <input
                       className="input"
-                      value={p.img || ""}
+                      value={p.img}
                       onChange={(e) =>
                         updateArray("products", (arr) => {
                           arr[idx].img = e.target.value;
@@ -531,8 +599,9 @@ export default function AdminPage() {
                           value={s.price}
                           onChange={(e) =>
                             updateArray("products", (arr) => {
-                              arr[idx].sizes[sidx].price =
-                                Number(e.target.value || 0);
+                              arr[idx].sizes[sidx].price = Number(
+                                e.target.value || 0
+                              );
                             })
                           }
                         />
@@ -577,7 +646,9 @@ export default function AdminPage() {
             <button
               className="btn-primary"
               onClick={() =>
-                updateArray("products", (arr) => arr.push({ ...EMPTY_PRODUCT }))
+                updateArray("products", (arr) =>
+                  arr.push(safeClone(EMPTY_PRODUCT))
+                )
               }
             >
               + Adicionar produto
@@ -590,9 +661,24 @@ export default function AdminPage() {
           <h2 className="text-lg font-semibold">Cupons / Raspadinha</h2>
           <CouponEditor cfg={cfg} setCfg={setCfg} />
           <div className="mt-4 flex gap-2">
-            <button onClick={saveToServer} className="btn-primary">
+            <button onClick={save} className="btn-primary">
               Salvar
             </button>
+            <button onClick={clearAll} className="btn">
+              Limpar tudo
+            </button>
+            <button onClick={downloadJson} className="btn">
+              Exportar
+            </button>
+            <label className="btn cursor-pointer">
+              Importar
+              <input
+                type="file"
+                accept="application/json"
+                onChange={uploadJson}
+                className="hidden"
+              />
+            </label>
           </div>
         </section>
       </main>
@@ -615,7 +701,7 @@ export default function AdminPage() {
         .btn-primary {
           padding: 8px 12px;
           border-radius: 10px;
-          background: #6D28D9;
+          background: #6d28d9;
           color: #fff;
         }
       `}</style>
@@ -624,11 +710,14 @@ export default function AdminPage() {
 }
 
 function CouponEditor({ cfg, setCfg }) {
-  const entries = useMemo(() => Object.entries(cfg.coupons || {}), [cfg.coupons]);
+  const entries = useMemo(
+    () => Object.entries(cfg.coupons || {}),
+    [cfg.coupons]
+  );
 
   function setField(code, key, value) {
     setCfg((prev) => {
-      const next = structuredClone(prev);
+      const next = safeClone(prev);
       if (!next.coupons) next.coupons = {};
       if (!next.coupons[code]) next.coupons[code] = {};
       next.coupons[code][key] = value;
@@ -640,7 +729,7 @@ function CouponEditor({ cfg, setCfg }) {
     const code = prompt("Código do cupom (ex.: ROXO10)");
     if (!code) return;
     setCfg((prev) => {
-      const next = structuredClone(prev);
+      const next = safeClone(prev);
       if (!next.coupons) next.coupons = {};
       next.coupons[code.toUpperCase()] = {
         type: "percent",
@@ -653,7 +742,7 @@ function CouponEditor({ cfg, setCfg }) {
 
   function removeCoupon(code) {
     setCfg((prev) => {
-      const next = structuredClone(prev);
+      const next = safeClone(prev);
       if (next.coupons) delete next.coupons[code];
       return next;
     });
@@ -662,7 +751,10 @@ function CouponEditor({ cfg, setCfg }) {
   return (
     <div className="mt-3 space-y-3">
       {entries.map(([code, c]) => (
-        <div key={code} className="rounded-xl border border-[#e5e7eb] p-3 bg-[#fafafa]">
+        <div
+          key={code}
+          className="rounded-xl border border-[#e5e7eb] p-3 bg-[#fafafa]"
+        >
           <div className="font-semibold">{code}</div>
           <div className="grid md:grid-cols-3 gap-2 mt-2">
             <select
@@ -678,7 +770,9 @@ function CouponEditor({ cfg, setCfg }) {
               type="number"
               placeholder="valor (%)"
               value={c.value || 0}
-              onChange={(e) => setField(code, "value", Number(e.target.value || 0))}
+              onChange={(e) =>
+                setField(code, "value", Number(e.target.value || 0))
+              }
             />
             <input
               className="input"
