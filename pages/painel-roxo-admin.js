@@ -347,4 +347,3 @@ function CouponEditor({ cfg, setCfg }) {
     </div>
   );
 }
-```0
