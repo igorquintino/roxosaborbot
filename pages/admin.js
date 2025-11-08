@@ -1,57 +1,73 @@
-// /pages/admin.js
-import React, { useEffect, useMemo, useState } from "react";
-
-/* =========================================================
-   Painel Admin (localStorage) – compatível com celulares
-   - Proteção via PIN: NEXT_PUBLIC_ADMIN_PIN
-   - Evita crash em navegadores sem structuredClone
-   ========================================================= */
+import React, { useEffect, useState, useMemo } from "react";
 
 const LS_KEY = "rs_config_v1";
 const PIN_ENV = process.env.NEXT_PUBLIC_ADMIN_PIN || "";
 
-// Fallback seguro ao structuredClone (iOS/Android WebView antigas)
-const safeClone = (obj) => {
-  try {
-    if (typeof structuredClone === "function") return structuredClone(obj);
-  } catch {}
-  return JSON.parse(JSON.stringify(obj));
-};
-
-const EMPTY_PRODUCT = {
-  id: "",
-  category: "",
-  name: "",
-  desc: "",
-  price: 0,
-  img: "",
-  tags: [],
-  sizes: [],
-};
-
-const EMPTY_ADDON = { id: "", name: "", price: 0 };
-const EMPTY_CATEGORY = { id: "", name: "" };
+// Fallback seguro (sem structuredClone)
+const clone = (obj) => JSON.parse(JSON.stringify(obj || {}));
 
 export default function AdminPage() {
-  // ---- Gate de PIN ----
+  const [mounted, setMounted] = useState(false);
   const [ok, setOk] = useState(false);
   const [pin, setPin] = useState("");
+  const [cfg, setCfg] = useState(null);
 
+  // Evita SSR acessar localStorage
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const cached = localStorage.getItem("rs_admin_ok");
-    if (cached === "1") setOk(true);
+    setMounted(true);
+
+    try {
+      const localOk = localStorage.getItem("rs_admin_ok");
+      if (localOk === "1") setOk(true);
+
+      const saved = localStorage.getItem(LS_KEY);
+      if (saved) setCfg(JSON.parse(saved));
+      else
+        setCfg({
+          brand: {
+            name: "",
+            logoText: "",
+            colors: {
+              primary: "#6D28D9",
+              primaryDark: "#4C1D95",
+              accent: "#22C55E",
+            },
+          },
+          store: {
+            whatsapp: "",
+            instagram: "",
+            deliveryHours: "",
+            bannerUrl: "",
+            logoUrl: "",
+            closedNote: "",
+            raspadinhaCopy: "",
+          },
+          categories: [],
+          addons: [],
+          products: [],
+          coupons: {},
+        });
+    } catch {
+      setCfg(null);
+    }
   }, []);
 
   function checkPin(e) {
     e.preventDefault();
-    if (pin && PIN_ENV && pin === PIN_ENV) {
+    if (pin === PIN_ENV && pin) {
       localStorage.setItem("rs_admin_ok", "1");
       setOk(true);
     } else {
-      alert("PIN inválido.");
+      alert("PIN incorreto.");
     }
   }
+
+  function save() {
+    localStorage.setItem(LS_KEY, JSON.stringify(cfg));
+    alert("✅ Salvo com sucesso!");
+  }
+
+  if (!mounted) return null;
 
   if (!ok) {
     return (
@@ -60,737 +76,75 @@ export default function AdminPage() {
           onSubmit={checkPin}
           className="rounded-2xl bg-white border border-[#e5e7eb] p-6 w-full max-w-sm shadow-sm"
         >
-          <h1 className="text-xl font-semibold">Acesso ao Painel</h1>
-          <p className="text-sm text-[#475569] mt-1">
-            Digite o PIN para continuar
-          </p>
+          <h1 className="text-xl font-semibold">Painel Ilumo</h1>
+          <p className="text-sm text-[#475569] mt-1">Digite o PIN de acesso</p>
           <input
             type="password"
-            autoFocus
             value={pin}
             onChange={(e) => setPin(e.target.value)}
-            className="w-full mt-4 px-3 py-2 rounded-xl border border-[#e5e7eb] outline-none bg-white"
+            className="w-full mt-4 px-3 py-2 rounded-xl border border-[#e5e7eb] outline-none"
             placeholder="PIN"
           />
-          <button className="mt-3 w-full rounded-xl bg-[#6D28D9] text-white py-2.5 hover:opacity-90">
+          <button className="mt-3 w-full rounded-xl bg-[#6D28D9] text-white py-2 hover:opacity-90">
             Entrar
           </button>
-          <a
-            href="/"
-            className="block mt-3 text-center text-sm text-[#475569] underline"
-          >
-            Voltar ao site
-          </a>
         </form>
       </div>
     );
   }
 
-  // ---- Estado da configuração ----
-  const [cfg, setCfg] = useState({
-    brand: {
-      name: "",
-      logoText: "",
-      colors: {
-        primary: "#6D28D9",
-        primaryDark: "#4C1D95",
-        accent: "#22C55E",
-      },
-    },
-    store: {
-      whatsapp: "",
-      instagram: "",
-      deliveryHours: "",
-      bannerUrl: "",
-      logoUrl: "",
-      closedNote: "",
-      raspadinhaCopy: "",
-    },
-    categories: [],
-    addons: [],
-    products: [],
-    coupons: {},
-  });
+  if (!cfg)
+    return (
+      <div className="min-h-screen grid place-items-center text-center">
+        <p>Carregando painel...</p>
+      </div>
+    );
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const raw = localStorage.getItem(LS_KEY);
-    if (raw) {
-      try {
-        setCfg(JSON.parse(raw));
-      } catch {
-        // ignore
-      }
-    }
-  }, []);
-
-  function save() {
-    localStorage.setItem(LS_KEY, JSON.stringify(cfg));
-    alert("✅ Configurações salvas!");
-  }
-  function clearAll() {
-    if (!confirm("Tem certeza que deseja limpar TODA a configuração?")) return;
-    localStorage.removeItem(LS_KEY);
-    location.reload();
-  }
-  function downloadJson() {
-    const blob = new Blob([JSON.stringify(cfg, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "rs_config_v1.json";
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-  function uploadJson(e) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        setCfg(JSON.parse(String(reader.result)));
-        alert("✅ Config carregada (salve para aplicar)!");
-      } catch {
-        alert("Arquivo inválido.");
-      }
-    };
-    reader.readAsText(f);
-  }
-
-  // Atualiza arrays profundamente com clone seguro
-  function updateArray(path, updater) {
-    setCfg((prev) => {
-      const next = safeClone(prev);
-      const keys = path.split(".");
-      let ref = next;
-      for (let i = 0; i < keys.length; i++) ref = ref[keys[i]];
-      updater(ref);
-      return next;
-    });
-  }
-
+  // Editor simples só pra testar sem crash
   return (
     <div className="min-h-screen bg-[#f7f7fb] text-[#0f172a]">
-      <header className="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-[#e5e7eb]">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
-          <a
-            href="/"
-            className="px-3 py-1.5 rounded-xl border border-[#e5e7eb] bg-white hover:bg-[#f1f5f9]"
-          >
-            ← Voltar
-          </a>
-        </div>
+      <header className="p-4 bg-white shadow-sm border-b border-[#e5e7eb] flex justify-between items-center">
+        <h1 className="font-semibold text-lg">Painel Ilumo</h1>
+        <button
+          onClick={save}
+          className="px-4 py-2 rounded-xl bg-[#6D28D9] text-white hover:opacity-90"
+        >
+          Salvar
+        </button>
       </header>
 
-      <main className="max-w-5xl mx-auto p-4 grid lg:grid-cols-2 gap-6">
-        {/* LOJA */}
-        <section className="rounded-2xl bg-white border border-[#e5e7eb] p-4 shadow-sm">
-          <h2 className="text-lg font-semibold">Loja</h2>
-          <div className="mt-3 grid gap-2">
-            <label className="text-sm">Nome</label>
-            <input
-              className="input"
-              value={cfg.brand.name || ""}
-              onChange={(e) =>
-                setCfg({ ...cfg, brand: { ...cfg.brand, name: e.target.value } })
-              }
-            />
+      <main className="max-w-4xl mx-auto p-6">
+        <h2 className="text-lg font-medium">Nome da loja</h2>
+        <input
+          className="w-full mt-2 p-2 border rounded-xl"
+          value={cfg.brand.name}
+          onChange={(e) =>
+            setCfg((prev) => ({
+              ...prev,
+              brand: { ...prev.brand, name: e.target.value },
+            }))
+          }
+        />
 
-            <label className="text-sm">Logo Text</label>
-            <input
-              className="input"
-              value={cfg.brand.logoText || ""}
-              onChange={(e) =>
-                setCfg({
-                  ...cfg,
-                  brand: { ...cfg.brand, logoText: e.target.value },
-                })
-              }
-            />
+        <h2 className="text-lg font-medium mt-6">WhatsApp</h2>
+        <input
+          className="w-full mt-2 p-2 border rounded-xl"
+          value={cfg.store.whatsapp}
+          onChange={(e) =>
+            setCfg((prev) => ({
+              ...prev,
+              store: { ...prev.store, whatsapp: e.target.value },
+            }))
+          }
+        />
 
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="text-sm">Cor primária</label>
-                <input
-                  type="color"
-                  className="input"
-                  value={cfg.brand.colors.primary}
-                  onChange={(e) =>
-                    setCfg({
-                      ...cfg,
-                      brand: {
-                        ...cfg.brand,
-                        colors: {
-                          ...cfg.brand.colors,
-                          primary: e.target.value,
-                        },
-                      },
-                    })
-                  }
-                />
-              </div>
-              <div>
-                <label className="text-sm">Primária (dark)</label>
-                <input
-                  type="color"
-                  className="input"
-                  value={cfg.brand.colors.primaryDark}
-                  onChange={(e) =>
-                    setCfg({
-                      ...cfg,
-                      brand: {
-                        ...cfg.brand,
-                        colors: {
-                          ...cfg.brand.colors,
-                          primaryDark: e.target.value,
-                        },
-                      },
-                    })
-                  }
-                />
-              </div>
-              <div>
-                <label className="text-sm">Accent</label>
-                <input
-                  type="color"
-                  className="input"
-                  value={cfg.brand.colors.accent}
-                  onChange={(e) =>
-                    setCfg({
-                      ...cfg,
-                      brand: {
-                        ...cfg.brand,
-                        colors: {
-                          ...cfg.brand.colors,
-                          accent: e.target.value,
-                        },
-                      },
-                    })
-                  }
-                />
-              </div>
-            </div>
-
-            <label className="text-sm">WhatsApp</label>
-            <input
-              className="input"
-              value={cfg.store.whatsapp || ""}
-              onChange={(e) =>
-                setCfg({
-                  ...cfg,
-                  store: { ...cfg.store, whatsapp: e.target.value },
-                })
-              }
-            />
-
-            <label className="text-sm">Instagram</label>
-            <input
-              className="input"
-              value={cfg.store.instagram || ""}
-              onChange={(e) =>
-                setCfg({
-                  ...cfg,
-                  store: { ...cfg.store, instagram: e.target.value },
-                })
-              }
-            />
-
-            <label className="text-sm">Horário</label>
-            <input
-              className="input"
-              value={cfg.store.deliveryHours || ""}
-              onChange={(e) =>
-                setCfg({
-                  ...cfg,
-                  store: { ...cfg.store, deliveryHours: e.target.value },
-                })
-              }
-            />
-
-            <label className="text-sm">Banner (URL/DataURL)</label>
-            <input
-              className="input"
-              value={cfg.store.bannerUrl || ""}
-              onChange={(e) =>
-                setCfg({
-                  ...cfg,
-                  store: { ...cfg.store, bannerUrl: e.target.value },
-                })
-              }
-            />
-
-            <label className="text-sm">Logo (URL/DataURL)</label>
-            <input
-              className="input"
-              value={cfg.store.logoUrl || ""}
-              onChange={(e) =>
-                setCfg({
-                  ...cfg,
-                  store: { ...cfg.store, logoUrl: e.target.value },
-                })
-              }
-            />
-
-            <label className="text-sm">Nota de loja fechada</label>
-            <input
-              className="input"
-              value={cfg.store.closedNote || ""}
-              onChange={(e) =>
-                setCfg({
-                  ...cfg,
-                  store: { ...cfg.store, closedNote: e.target.value },
-                })
-              }
-            />
-
-            <label className="text-sm">Texto da raspadinha</label>
-            <textarea
-              className="input h-24"
-              value={cfg.store.raspadinhaCopy || ""}
-              onChange={(e) =>
-                setCfg({
-                  ...cfg,
-                  store: { ...cfg.store, raspadinhaCopy: e.target.value },
-                })
-              }
-            />
-          </div>
-        </section>
-
-        {/* CATEGORIAS */}
-        <section className="rounded-2xl bg-white border border-[#e5e7eb] p-4 shadow-sm">
-          <h2 className="text-lg font-semibold">Categorias</h2>
-          <div className="mt-3 space-y-2">
-            {(cfg.categories || []).map((c, idx) => (
-              <div
-                key={idx}
-                className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center"
-              >
-                <input
-                  className="input"
-                  placeholder="id"
-                  value={c.id}
-                  onChange={(e) =>
-                    updateArray("categories", (arr) => {
-                      arr[idx].id = e.target.value;
-                    })
-                  }
-                />
-                <input
-                  className="input"
-                  placeholder="Nome"
-                  value={c.name}
-                  onChange={(e) =>
-                    updateArray("categories", (arr) => {
-                      arr[idx].name = e.target.value;
-                    })
-                  }
-                />
-                <div className="flex gap-2">
-                  <button
-                    className="btn"
-                    onClick={() =>
-                      updateArray("categories", (arr) => arr.splice(idx, 1))
-                    }
-                  >
-                    Excluir
-                  </button>
-                </div>
-              </div>
-            ))}
-            <button
-              className="btn-primary"
-              onClick={() =>
-                updateArray("categories", (arr) =>
-                  arr.push(safeClone(EMPTY_CATEGORY))
-                )
-              }
-            >
-              + Adicionar categoria
-            </button>
-          </div>
-        </section>
-
-        {/* ADICIONAIS */}
-        <section className="rounded-2xl bg-white border border-[#e5e7eb] p-4 shadow-sm">
-          <h2 className="text-lg font-semibold">Adicionais</h2>
-          <div className="mt-3 space-y-2">
-            {(cfg.addons || []).map((a, idx) => (
-              <div
-                key={idx}
-                className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center"
-              >
-                <input
-                  className="input"
-                  placeholder="id"
-                  value={a.id}
-                  onChange={(e) =>
-                    updateArray("addons", (arr) => {
-                      arr[idx].id = e.target.value;
-                    })
-                  }
-                />
-                <input
-                  className="input"
-                  placeholder="Nome"
-                  value={a.name}
-                  onChange={(e) =>
-                    updateArray("addons", (arr) => {
-                      arr[idx].name = e.target.value;
-                    })
-                  }
-                />
-                <input
-                  type="number"
-                  className="input"
-                  placeholder="Preço"
-                  value={a.price}
-                  onChange={(e) =>
-                    updateArray("addons", (arr) => {
-                      arr[idx].price = Number(e.target.value || 0);
-                    })
-                  }
-                />
-                <button
-                  className="btn"
-                  onClick={() =>
-                    updateArray("addons", (arr) => arr.splice(idx, 1))
-                  }
-                >
-                  Excluir
-                </button>
-              </div>
-            ))}
-            <button
-              className="btn-primary"
-              onClick={() =>
-                updateArray("addons", (arr) => arr.push(safeClone(EMPTY_ADDON)))
-              }
-            >
-              + Adicionar adicional
-            </button>
-          </div>
-        </section>
-
-        {/* PRODUTOS */}
-        <section className="rounded-2xl bg-white border border-[#e5e7eb] p-4 shadow-sm lg:col-span-2">
-          <h2 className="text-lg font-semibold">Produtos</h2>
-          <div className="mt-3 space-y-4">
-            {(cfg.products || []).map((p, idx) => (
-              <div
-                key={idx}
-                className="rounded-xl border border-[#e5e7eb] p-3 bg-[#fafafa]"
-              >
-                <div className="grid md:grid-cols-2 gap-3">
-                  <div className="grid gap-2">
-                    <label className="text-sm">ID</label>
-                    <input
-                      className="input"
-                      value={p.id}
-                      onChange={(e) =>
-                        updateArray("products", (arr) => {
-                          arr[idx].id = e.target.value;
-                        })
-                      }
-                    />
-                    <label className="text-sm">Categoria (id)</label>
-                    <input
-                      className="input"
-                      value={p.category}
-                      onChange={(e) =>
-                        updateArray("products", (arr) => {
-                          arr[idx].category = e.target.value;
-                        })
-                      }
-                    />
-                    <label className="text-sm">Nome</label>
-                    <input
-                      className="input"
-                      value={p.name}
-                      onChange={(e) =>
-                        updateArray("products", (arr) => {
-                          arr[idx].name = e.target.value;
-                        })
-                      }
-                    />
-                    <label className="text-sm">Descrição</label>
-                    <textarea
-                      className="input h-20"
-                      value={p.desc || ""}
-                      onChange={(e) =>
-                        updateArray("products", (arr) => {
-                          arr[idx].desc = e.target.value;
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <label className="text-sm">Preço base</label>
-                    <input
-                      type="number"
-                      className="input"
-                      value={p.price}
-                      onChange={(e) =>
-                        updateArray("products", (arr) => {
-                          arr[idx].price = Number(e.target.value || 0);
-                        })
-                      }
-                    />
-                    <label className="text-sm">Imagem (URL/DataURL)</label>
-                    <input
-                      className="input"
-                      value={p.img}
-                      onChange={(e) =>
-                        updateArray("products", (arr) => {
-                          arr[idx].img = e.target.value;
-                        })
-                      }
-                    />
-                    <label className="text-sm">Tags (vírgula)</label>
-                    <input
-                      className="input"
-                      value={(p.tags || []).join(",")}
-                      onChange={(e) =>
-                        updateArray("products", (arr) => {
-                          arr[idx].tags = e.target.value
-                            .split(",")
-                            .map((s) => s.trim())
-                            .filter(Boolean);
-                        })
-                      }
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-3">
-                  <div className="font-medium">Tamanhos (opcional)</div>
-                  <div className="mt-2 space-y-2">
-                    {(p.sizes || []).map((s, sidx) => (
-                      <div
-                        key={sidx}
-                        className="grid grid-cols-[1fr_2fr_1fr_auto] gap-2 items-center"
-                      >
-                        <input
-                          className="input"
-                          placeholder="code"
-                          value={s.code}
-                          onChange={(e) =>
-                            updateArray("products", (arr) => {
-                              arr[idx].sizes[sidx].code = e.target.value;
-                            })
-                          }
-                        />
-                        <input
-                          className="input"
-                          placeholder="label"
-                          value={s.label}
-                          onChange={(e) =>
-                            updateArray("products", (arr) => {
-                              arr[idx].sizes[sidx].label = e.target.value;
-                            })
-                          }
-                        />
-                        <input
-                          type="number"
-                          className="input"
-                          placeholder="price"
-                          value={s.price}
-                          onChange={(e) =>
-                            updateArray("products", (arr) => {
-                              arr[idx].sizes[sidx].price = Number(
-                                e.target.value || 0
-                              );
-                            })
-                          }
-                        />
-                        <button
-                          className="btn"
-                          onClick={() =>
-                            updateArray("products", (arr) => {
-                              arr[idx].sizes.splice(sidx, 1);
-                            })
-                          }
-                        >
-                          Remover
-                        </button>
-                      </div>
-                    ))}
-                    <button
-                      className="btn"
-                      onClick={() =>
-                        updateArray("products", (arr) => {
-                          arr[idx].sizes = arr[idx].sizes || [];
-                          arr[idx].sizes.push({ code: "", label: "", price: 0 });
-                        })
-                      }
-                    >
-                      + Adicionar tamanho
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-3 flex justify-between">
-                  <button
-                    className="btn"
-                    onClick={() =>
-                      updateArray("products", (arr) => arr.splice(idx, 1))
-                    }
-                  >
-                    Excluir produto
-                  </button>
-                </div>
-              </div>
-            ))}
-            <button
-              className="btn-primary"
-              onClick={() =>
-                updateArray("products", (arr) =>
-                  arr.push(safeClone(EMPTY_PRODUCT))
-                )
-              }
-            >
-              + Adicionar produto
-            </button>
-          </div>
-        </section>
-
-        {/* CUPONS */}
-        <section className="rounded-2xl bg-white border border-[#e5e7eb] p-4 shadow-sm">
-          <h2 className="text-lg font-semibold">Cupons / Raspadinha</h2>
-          <CouponEditor cfg={cfg} setCfg={setCfg} />
-          <div className="mt-4 flex gap-2">
-            <button onClick={save} className="btn-primary">
-              Salvar
-            </button>
-            <button onClick={clearAll} className="btn">
-              Limpar tudo
-            </button>
-            <button onClick={downloadJson} className="btn">
-              Exportar
-            </button>
-            <label className="btn cursor-pointer">
-              Importar
-              <input
-                type="file"
-                accept="application/json"
-                onChange={uploadJson}
-                className="hidden"
-              />
-            </label>
-          </div>
-        </section>
-      </main>
-
-      <style jsx global>{`
-        .input {
-          width: 100%;
-          padding: 10px 12px;
-          border-radius: 12px;
-          border: 1px solid #e5e7eb;
-          background: #fff;
-          outline: none;
-        }
-        .btn {
-          padding: 8px 12px;
-          border-radius: 10px;
-          border: 1px solid #e5e7eb;
-          background: #fff;
-        }
-        .btn-primary {
-          padding: 8px 12px;
-          border-radius: 10px;
-          background: #6d28d9;
-          color: #fff;
-        }
-      `}</style>
-    </div>
-  );
-}
-
-function CouponEditor({ cfg, setCfg }) {
-  const entries = useMemo(
-    () => Object.entries(cfg.coupons || {}),
-    [cfg.coupons]
-  );
-
-  function setField(code, key, value) {
-    setCfg((prev) => {
-      const next = safeClone(prev);
-      if (!next.coupons) next.coupons = {};
-      if (!next.coupons[code]) next.coupons[code] = {};
-      next.coupons[code][key] = value;
-      return next;
-    });
-  }
-
-  function addCoupon() {
-    const code = prompt("Código do cupom (ex.: ROXO10)");
-    if (!code) return;
-    setCfg((prev) => {
-      const next = safeClone(prev);
-      if (!next.coupons) next.coupons = {};
-      next.coupons[code.toUpperCase()] = {
-        type: "percent",
-        value: 10,
-        label: "10% de desconto aplicado",
-      };
-      return next;
-    });
-  }
-
-  function removeCoupon(code) {
-    setCfg((prev) => {
-      const next = safeClone(prev);
-      if (next.coupons) delete next.coupons[code];
-      return next;
-    });
-  }
-
-  return (
-    <div className="mt-3 space-y-3">
-      {entries.map(([code, c]) => (
-        <div
-          key={code}
-          className="rounded-xl border border-[#e5e7eb] p-3 bg-[#fafafa]"
+        <button
+          onClick={save}
+          className="mt-6 px-6 py-2 rounded-xl bg-[#6D28D9] text-white"
         >
-          <div className="font-semibold">{code}</div>
-          <div className="grid md:grid-cols-3 gap-2 mt-2">
-            <select
-              className="input"
-              value={c.type || "percent"}
-              onChange={(e) => setField(code, "type", e.target.value)}
-            >
-              <option value="percent">percent</option>
-              <option value="msg">msg</option>
-            </select>
-            <input
-              className="input"
-              type="number"
-              placeholder="valor (%)"
-              value={c.value || 0}
-              onChange={(e) =>
-                setField(code, "value", Number(e.target.value || 0))
-              }
-            />
-            <input
-              className="input"
-              placeholder="label"
-              value={c.label || ""}
-              onChange={(e) => setField(code, "label", e.target.value)}
-            />
-          </div>
-          <div className="mt-2">
-            <button className="btn" onClick={() => removeCoupon(code)}>
-              Remover cupom
-            </button>
-          </div>
-        </div>
-      ))}
-      <button className="btn-primary" onClick={addCoupon}>
-        + Adicionar cupom
-      </button>
+          Salvar Alterações
+        </button>
+      </main>
     </div>
   );
 }
