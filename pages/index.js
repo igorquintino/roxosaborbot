@@ -4,8 +4,8 @@ import { useRouter } from "next/router";
 
 const LS_KEY = "ilumo_cfg_v2";
 
-// ===== DEFAULTS (usados até o painel carregar) =====
-const BRAND_FALLBACK = {
+/** ===== DEFAULTS (usados até carregar overrides do painel) ===== */
+const BRAND = {
   name: "Roxo Sabor",
   logoText: "ROXO SABOR",
   colors: {
@@ -14,30 +14,30 @@ const BRAND_FALLBACK = {
     accent: "#22C55E",
     lightBg: "#f7f7fb",
     lightFg: "#0f172a",
-    darkBg: "#0b0b0b",   // mantidos só para compatibilidade, não usamos tema escuro
+    darkBg: "#0b0b0b",
     darkFg: "#eaeaea",
     cardDark: "#121212",
     cardLight: "#ffffff",
   },
 };
 
-const STORE_FALLBACK = {
+const STORE = {
   whatsapp: "+55 31 993006358",
   instagram: "@roxosaboroficial",
   deliveryHours: "Todos os dias, 14h às 23h",
   raspadinhaCopy:
     "Raspou, achou, ganhou! Digite seu código para validar seu prêmio.",
-  logoUrl: "",    // preenchidos pelo painel
-  bannerUrl: "",  // preenchidos pelo painel
+  logoUrl: "",   // será substituído pelo painel
+  bannerUrl: "", // será substituído pelo painel
 };
 
-const COUPONS_FALLBACK = {
+const COUPONS = {
   ROXO10: { type: "percent", value: 10, label: "10% de desconto aplicado" },
   FRETEGRATIS: { type: "msg", label: "Frete grátis na próxima compra!" },
   ADICIONAL: { type: "msg", label: "Um adicional grátis no próximo açaí!" },
 };
 
-const CATEGORIES_FALLBACK = [
+const CATEGORIES = [
   { id: "promos", name: "Promoções" },
   { id: "acai", name: "Açaí no Copo" },
   { id: "combos", name: "Combos" },
@@ -45,7 +45,7 @@ const CATEGORIES_FALLBACK = [
   { id: "bebidas", name: "Bebidas" },
 ];
 
-const ADDONS_FALLBACK = [
+const ADDONS = [
   { id: "leiteNinho", name: "Leite Ninho", price: 1.0 },
   { id: "nutella", name: "Nutella", price: 4.5 },
   { id: "morango", name: "Morango", price: 3.0 },
@@ -54,7 +54,7 @@ const ADDONS_FALLBACK = [
   { id: "leiteCondensado", name: "Leite Condensado", price: 2.5 },
 ];
 
-const PRODUCTS_FALLBACK = [
+const PRODUCTS = [
   {
     id: "promo-999",
     category: "promos",
@@ -96,7 +96,7 @@ const PRODUCTS_FALLBACK = [
     img: "/prod-acai2.jpg",
     tags: ["família"],
   },
-  ...ADDONS_FALLBACK.map((a) => ({
+  ...ADDONS.map((a) => ({
     id: `addon-${a.id}`,
     category: "adicionais",
     name: a.name,
@@ -112,7 +112,7 @@ const currency = (n) =>
 export default function RoxoSaborMenu() {
   const router = useRouter();
 
-  // ===== Lê overrides do painel (localStorage) =====
+  /** ===== Lê overrides do painel (localStorage) ===== */
   const [ov, setOv] = useState(null);
   useEffect(() => {
     try {
@@ -120,14 +120,14 @@ export default function RoxoSaborMenu() {
       if (raw) setOv(JSON.parse(raw));
     } catch {}
   }, []);
-  const BRAND = ov?.brand ?? BRAND_FALLBACK;
-  const STORE = { ...STORE_FALLBACK, ...(ov?.store || {}) };
-  const CATEGORIES = ov?.categories ?? CATEGORIES_FALLBACK;
-  const ADDONS = ov?.addons ?? ADDONS_FALLBACK;
-  const PRODUCTS = ov?.products ?? PRODUCTS_FALLBACK;
-  const COUPONS = ov?.coupons ?? COUPONS_FALLBACK;
+  const _BRAND = ov?.brand ?? BRAND;
+  const _STORE = ov?.store ? { ...STORE, ...ov.store } : STORE;
+  const _CATEGORIES = ov?.categories ?? CATEGORIES;
+  const _ADDONS = ov?.addons ?? ADDONS;
+  const _PRODUCTS = ov?.products ?? PRODUCTS;
+  const _COUPONS = ov?.coupons ?? COUPONS;
 
-  // ===== Estados =====
+  /** ===== Estados ===== */
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("acai");
   const [cart, setCart] = useState([]);
@@ -145,7 +145,7 @@ export default function RoxoSaborMenu() {
   }, [router.query.pago]);
 
   const filtered = useMemo(() => {
-    return PRODUCTS.filter(
+    return _PRODUCTS.filter(
       (p) =>
         (category ? p.category === category : true) &&
         (query
@@ -154,7 +154,7 @@ export default function RoxoSaborMenu() {
               .includes(query.toLowerCase())
           : true)
     );
-  }, [PRODUCTS, category, query]);
+  }, [_PRODUCTS, category, query]);
 
   const subtotal = cart.reduce((s, i) => s + i.subtotal, 0);
   const discount =
@@ -189,7 +189,7 @@ export default function RoxoSaborMenu() {
   }
   function applyCoupon() {
     const code = couponCode.trim().toUpperCase();
-    const found = COUPONS[code];
+    const found = _COUPONS[code];
     if (found) setCouponInfo({ ...found, code });
     else setCouponInfo({ type: "msg", label: "Código inválido ou já utilizado." });
   }
@@ -228,13 +228,13 @@ export default function RoxoSaborMenu() {
 
   return (
     <div className="min-h-screen text-[15px] bg-[--bg] text-[--fg]">
-      {/* HEADER (sem botão de tema) */}
+      {/* HEADER */}
       <header className="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-[color:var(--line)]">
         <div className="max-w-md mx-auto px-4 py-3 flex items-center gap-3">
           <div className="mx-auto text-center">
-            <div className="text-sm text-[color:var(--muted)]">{BRAND.name}</div>
+            <div className="text-sm text-[color:var(--muted)]">{_BRAND.name}</div>
             <div className="text-xs text-[color:var(--muted)]">
-              {STORE.deliveryHours}
+              {_STORE.deliveryHours}
             </div>
           </div>
           <a
@@ -246,26 +246,31 @@ export default function RoxoSaborMenu() {
         </div>
       </header>
 
-      {/* HERO (usa banner/logo do painel se houver) */}
-      <section className="max-w-md mx-auto">
-        <div className="relative overflow-hidden">
-          <img
-            src={STORE.bannerUrl || "/hero.jpg"}
-            className="h-28 w-full object-cover"
-            alt=""
-            onError={(e) => (e.currentTarget.src = "/hero.jpg")}
-          />
-          <div className="mx-4 -mt-10 rounded-3xl bg-white p-4 shadow-md border border-[color:var(--line)]">
+      {/* HERO (banner dentro do card + infos abaixo) */}
+      <section className="max-w-md mx-auto px-4 pt-3">
+        <div className="rounded-3xl bg-white shadow-md border border-[color:var(--line)] overflow-hidden">
+          {/* Banner */}
+          <div className="h-32 w-full">
+            <img
+              src={_STORE.bannerUrl || "/hero.jpg"}
+              className="h-full w-full object-cover"
+              alt="Banner"
+              onError={(e) => (e.currentTarget.src = "/hero.jpg")}
+            />
+          </div>
+
+          {/* Conteúdo abaixo do banner */}
+          <div className="p-4">
             <div className="flex items-center gap-3">
               <img
-                src={STORE.logoUrl || "/logo-roxo.png"}
-                className="h-14 w-14 rounded-full border border-[color:var(--line)] object-cover bg-white"
+                src={_STORE.logoUrl || "/logo-roxo.png"}
+                className="h-14 w-14 rounded-full border border-[color:var(--line)] object-cover bg-white shrink-0"
                 alt="Logo"
                 onError={(e) => (e.currentTarget.src = "/logo-roxo.png")}
               />
-              <div className="flex-1">
-                <h1 className="text-lg font-semibold">
-                  {BRAND.name} - Bairro Progresso
+              <div className="flex-1 min-w-0">
+                <h1 className="text-lg font-semibold truncate">
+                  {_BRAND.name} - Bairro Progresso
                 </h1>
                 <div className="mt-0.5 text-sm text-[color:var(--muted)]">
                   Entrega rastreável • 2.7 km • Min R$ 20,00
@@ -273,6 +278,7 @@ export default function RoxoSaborMenu() {
                 <div className="mt-1 text-sm">⭐ 5,0 (4 avaliações)</div>
               </div>
             </div>
+
             <div className="mt-3 rounded-xl bg-[color:var(--chip)] p-2 text-center text-sm text-[color:var(--muted)]">
               Loja fechada • Abre amanhã às 09:00
             </div>
@@ -280,7 +286,7 @@ export default function RoxoSaborMenu() {
         </div>
       </section>
 
-      {/* BUSCA / CATEGORIAS / CUPOM */}
+      {/* BUSCA / CATEGORIAS */}
       <section className="max-w-md mx-auto px-4 pt-4">
         <input
           value={query}
@@ -290,7 +296,7 @@ export default function RoxoSaborMenu() {
         />
 
         <div className="mt-3 flex flex-wrap gap-8">
-          {CATEGORIES.map((c) => (
+          {_CATEGORIES.map((c) => (
             <button
               key={c.id}
               onClick={() => setCategory(c.id)}
@@ -304,10 +310,13 @@ export default function RoxoSaborMenu() {
             </button>
           ))}
         </div>
+      </section>
 
-        <div className="mt-4 text-sm rounded-2xl bg-white border border-[color:var(--line)] p-4 shadow-sm">
+      {/* RASPADINHA (antes do carrinho) */}
+      <section className="max-w-md mx-auto px-4 pt-4">
+        <div className="text-sm rounded-2xl bg-white border border-[color:var(--line)] p-4 shadow-sm">
           <div className="font-semibold">🎟️ Raspadinha Roxo Sabor</div>
-          <p className="text-[color:var(--muted)]">{STORE.raspadinhaCopy}</p>
+          <p className="text-[color:var(--muted)]">{_STORE.raspadinhaCopy}</p>
           <div className="mt-3 flex gap-2">
             <input
               value={couponCode}
@@ -431,17 +440,17 @@ export default function RoxoSaborMenu() {
       {/* FOOTER */}
       <footer className="py-10 text-center text-xs text-[color:var(--muted)]">
         <div>
-          {BRAND.name} • {STORE.deliveryHours}
+          {_BRAND.name} • {_STORE.deliveryHours}
         </div>
         <div>Feito com ❤️ para vender mais açaí</div>
       </footer>
 
-      {/* THEME (apenas claro) */}
+      {/* THEME (só claro) */}
       <style jsx global>{`
         :root {
-          --primary: ${BRAND.colors.primary};
-          --primaryDark: ${BRAND.colors.primaryDark};
-          --accent: ${BRAND.colors.accent};
+          --primary: ${_BRAND.colors.primary};
+          --primaryDark: ${_BRAND.colors.primaryDark};
+          --accent: ${_BRAND.colors.accent};
           --bg: #f7f7fb;
           --fg: #0f172a;
           --muted: #475569;
@@ -492,7 +501,7 @@ function ProductRow({ product, onClick, first }) {
   );
 }
 
-function ItemSheet({ open, onClose, product, onConfirm, addonsList = [] }) {
+function ItemSheet({ open, onClose, product, onConfirm, addonsList = ADDONS }) {
   const [qty, setQty] = useState(1);
   const [noteItem, setNoteItem] = useState("");
   const [selectedSize, setSelectedSize] = useState(null);
@@ -545,7 +554,7 @@ function ItemSheet({ open, onClose, product, onConfirm, addonsList = [] }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="h-40 w-full overflow-hidden rounded-t-3xl">
-          <img src={product.img} className="h-full w-full object-cover" />
+          <img src={product.img} className="h-full w-full object-cover" alt="" />
         </div>
 
         <div className="p-4">
@@ -582,7 +591,7 @@ function ItemSheet({ open, onClose, product, onConfirm, addonsList = [] }) {
             <div className="grid gap-2">
               {addonsList.map((o) => {
                 const selected = picked.has(o.id);
-                const disabled = !selected && picked.size >= 3;
+                const disabled = !selected && picked.size >= MAX;
                 return (
                   <button
                     key={o.id}
@@ -607,9 +616,7 @@ function ItemSheet({ open, onClose, product, onConfirm, addonsList = [] }) {
           </div>
 
           <div className="mt-4">
-            <div className="mb-2 text-base font-semibold">
-              Alguma observação?
-            </div>
+            <div className="mb-2 text-base font-semibold">Alguma observação?</div>
             <textarea
               value={noteItem}
               onChange={(e) => setNoteItem(e.target.value)}
