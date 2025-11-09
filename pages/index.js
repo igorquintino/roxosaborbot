@@ -42,7 +42,6 @@ const STORE = {
   whatsapp: "+55 31 993006358",
   instagram: "@roxosaboroficial",
   deliveryHours: "Todos os dias, 14h às 23h",
-  // defaults locais (se admin estiver sem esses campos)
   bannerUrl: "/hero.jpg",
   logoUrl: "/logo-roxo.png",
   raspadinhaCopy:
@@ -129,7 +128,7 @@ const currency = (n) =>
 
 /* Placeholder inline (sempre existe) */
 const PLACEHOLDER =
-  'data:image/svg+xml;utf8,' +
+  "data:image/svg+xml;utf8," +
   encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="120">
        <rect width="100%" height="100%" fill="#f1f5f9"/>
@@ -177,7 +176,7 @@ export default function RoxoSaborMenu() {
     if (stored) setOv(stored);
   }, []);
 
-  // 🔥 Mescla defaults com o que veio do admin (evita apagar banner/logo quando string vazia)
+  // Mescla defaults com o que veio do admin
   const _BRAND = { ...BRAND, ...(ov?.brand || {}) };
   const _STORE = { ...STORE, ...(ov?.store || {}) };
   const _CATEGORIES = ov?.categories ?? CATEGORIES;
@@ -190,9 +189,18 @@ export default function RoxoSaborMenu() {
   const [category, setCategory] = useState("acai");
   const [cart, setCart] = useState([]);
   const [note, setNote] = useState("");
-  const [customer, setCustomer] = useState({ name: "", phone: "", address: "" });
+
+  // ENDEREÇO SEPARADO
+  const [customer, setCustomer] = useState({
+    name: "",
+    phone: "",
+    neighborhood: "", // bairro
+    street: "",
+    number: "",
+    complement: "",
+  });
+
   const [couponCode, setCouponCode] = useState("");
-  thead;
   const [couponInfo, setCouponInfo] = useState(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetProduct, setSheetProduct] = useState(null);
@@ -255,11 +263,30 @@ export default function RoxoSaborMenu() {
   async function checkoutMP() {
     try {
       if (!cart.length) return;
-      if (!customer.name || !customer.phone || !customer.address) {
-        alert("Preencha nome, telefone e endereço para continuar.");
+
+      if (!customer.name || !customer.phone) {
+        alert("Informe nome e telefone para continuar.");
         return;
       }
-      const body = { cart, total: Number(subtotal.toFixed(2)), note, customer };
+      if (!customer.neighborhood || !customer.street || !customer.number) {
+        alert("Preencha bairro, rua e número para continuar.");
+        return;
+      }
+
+      const fullAddress = `${customer.street}, ${customer.number} - ${customer.neighborhood}${
+        customer.complement ? ` (${customer.complement})` : ""
+      }`;
+
+      const body = {
+        cart,
+        total: Number(subtotal.toFixed(2)),
+        note,
+        customer: {
+          ...customer,
+          address: fullAddress, // também enviamos formatado
+        },
+      };
+
       const r = await fetch("/api/create-payment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -509,7 +536,11 @@ export default function RoxoSaborMenu() {
           --card: #ffffff;
           --chip: #f1f5f9;
         }
-        html, body { background: var(--bg); color: var(--fg); }
+        html,
+        body {
+          background: var(--bg);
+          color: var(--fg);
+        }
       `}</style>
 
       {/* Bottom Sheet do item */}
@@ -601,7 +632,10 @@ function ItemSheet({ open, onClose, product, onConfirm, addonsList }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid grid-rows-[1fr_auto] bg-black/30" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 grid grid-rows-[1fr_auto] bg-black/30"
+      onClick={onClose}
+    >
       <div
         className="mt-auto rounded-t-3xl bg-white border border-[color:var(--line)] shadow-xl"
         onClick={(e) => e.stopPropagation()}
@@ -674,11 +708,24 @@ function ItemSheet({ open, onClose, product, onConfirm, addonsList }) {
 
         <div className="sticky bottom-0 flex items-center gap-3 border-t border-[color:var(--line)] bg-white p-4">
           <div className="flex items-center gap-3">
-            <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="grid h-9 w-9 place-items-center rounded-full border border-[color:var(--line)]">−</button>
+            <button
+              onClick={() => setQty((q) => Math.max(1, q - 1))}
+              className="grid h-9 w-9 place-items-center rounded-full border border-[color:var(--line)]"
+            >
+              −
+            </button>
             <div className="w-6 text-center font-semibold">{qty}</div>
-            <button onClick={() => setQty((q) => q + 1)} className="grid h-9 w-9 place-items-center rounded-full border border-[color:var(--line)]">+</button>
+            <button
+              onClick={() => setQty((q) => q + 1)}
+              className="grid h-9 w-9 place-items-center rounded-full border border-[color:var(--line)]"
+            >
+              +
+            </button>
           </div>
-          <button className="flex-1 rounded-2xl bg-[--primary] py-3 text-center font-semibold text-white hover:opacity-90" onClick={confirm}>
+          <button
+            className="flex-1 rounded-2xl bg-[--primary] py-3 text-center font-semibold text-white hover:opacity-90"
+            onClick={confirm}
+          >
             Adicionar — {currency(price)}
           </button>
         </div>
@@ -687,7 +734,16 @@ function ItemSheet({ open, onClose, product, onConfirm, addonsList }) {
   );
 }
 
-function CartSummary({ subtotal, discount, total, note, setNote, customer, setCustomer, checkoutMP }) {
+function CartSummary({
+  subtotal,
+  discount,
+  total,
+  note,
+  setNote,
+  customer,
+  setCustomer,
+  checkoutMP,
+}) {
   return (
     <div className="p-4 border-t md:border-t-0 md:border-l border-[color:var(--line)] bg-white">
       <div className="grid gap-3">
@@ -702,6 +758,7 @@ function CartSummary({ subtotal, discount, total, note, setNote, customer, setCu
           />
         </div>
 
+        {/* Seus dados */}
         <div className="grid gap-2 text-sm pt-2">
           <label className="text-[color:var(--muted)]">Seus dados</label>
           <input
@@ -710,19 +767,48 @@ function CartSummary({ subtotal, discount, total, note, setNote, customer, setCu
             value={customer.name}
             onChange={(e) => setCustomer({ ...customer, name: e.target.value })}
           />
+          <input
+            className="px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
+            placeholder="Telefone (WhatsApp)"
+            value={customer.phone}
+            onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
+          />
         </div>
-        <input
-          className="px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
-          placeholder="Telefone (WhatsApp)"
-          value={customer.phone}
-          onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
-        />
-        <input
-          className="px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
-          placeholder="Endereço (rua, número e bairro)"
-          value={customer.address}
-          onChange={(e) => setCustomer({ ...customer, address: e.target.value })}
-        />
+
+        {/* Endereço separado */}
+        <div className="grid gap-2 text-sm">
+          <label className="text-[color:var(--muted)]">Endereço para entrega</label>
+          <input
+            className="px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
+            placeholder="Bairro"
+            value={customer.neighborhood}
+            onChange={(e) =>
+              setCustomer({ ...customer, neighborhood: e.target.value })
+            }
+          />
+          <input
+            className="px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
+            placeholder="Rua / Avenida"
+            value={customer.street}
+            onChange={(e) => setCustomer({ ...customer, street: e.target.value })}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              className="px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
+              placeholder="Número"
+              value={customer.number}
+              onChange={(e) => setCustomer({ ...customer, number: e.target.value })}
+            />
+            <input
+              className="px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
+              placeholder="Complemento (opcional)"
+              value={customer.complement}
+              onChange={(e) =>
+                setCustomer({ ...customer, complement: e.target.value })
+              }
+            />
+          </div>
+        </div>
 
         <div className="flex items-center justify-between text-sm pt-2">
           <span className="text-[color:var(--muted)]">Subtotal</span>
