@@ -5,7 +5,7 @@ import { useRouter } from "next/router";
 const LS_KEY = "ilumo_cfg_v2";
 
 // ===== DEFAULTS (usados até o painel carregar) =====
-const BRAND = {
+const BRAND_FALLBACK = {
   name: "Roxo Sabor",
   logoText: "ROXO SABOR",
   colors: {
@@ -14,28 +14,30 @@ const BRAND = {
     accent: "#22C55E",
     lightBg: "#f7f7fb",
     lightFg: "#0f172a",
-    darkBg: "#0b0b0b",
+    darkBg: "#0b0b0b",   // mantidos só para compatibilidade, não usamos tema escuro
     darkFg: "#eaeaea",
     cardDark: "#121212",
     cardLight: "#ffffff",
   },
 };
 
-const STORE = {
+const STORE_FALLBACK = {
   whatsapp: "+55 31 993006358",
   instagram: "@roxosaboroficial",
   deliveryHours: "Todos os dias, 14h às 23h",
   raspadinhaCopy:
     "Raspou, achou, ganhou! Digite seu código para validar seu prêmio.",
+  logoUrl: "",    // preenchidos pelo painel
+  bannerUrl: "",  // preenchidos pelo painel
 };
 
-const COUPONS = {
+const COUPONS_FALLBACK = {
   ROXO10: { type: "percent", value: 10, label: "10% de desconto aplicado" },
   FRETEGRATIS: { type: "msg", label: "Frete grátis na próxima compra!" },
   ADICIONAL: { type: "msg", label: "Um adicional grátis no próximo açaí!" },
 };
 
-const CATEGORIES = [
+const CATEGORIES_FALLBACK = [
   { id: "promos", name: "Promoções" },
   { id: "acai", name: "Açaí no Copo" },
   { id: "combos", name: "Combos" },
@@ -43,7 +45,7 @@ const CATEGORIES = [
   { id: "bebidas", name: "Bebidas" },
 ];
 
-const ADDONS = [
+const ADDONS_FALLBACK = [
   { id: "leiteNinho", name: "Leite Ninho", price: 1.0 },
   { id: "nutella", name: "Nutella", price: 4.5 },
   { id: "morango", name: "Morango", price: 3.0 },
@@ -52,7 +54,7 @@ const ADDONS = [
   { id: "leiteCondensado", name: "Leite Condensado", price: 2.5 },
 ];
 
-const PRODUCTS = [
+const PRODUCTS_FALLBACK = [
   {
     id: "promo-999",
     category: "promos",
@@ -94,7 +96,7 @@ const PRODUCTS = [
     img: "/prod-acai2.jpg",
     tags: ["família"],
   },
-  ...ADDONS.map((a) => ({
+  ...ADDONS_FALLBACK.map((a) => ({
     id: `addon-${a.id}`,
     category: "adicionais",
     name: a.name,
@@ -118,25 +120,12 @@ export default function RoxoSaborMenu() {
       if (raw) setOv(JSON.parse(raw));
     } catch {}
   }, []);
-  const _BRAND = ov?.brand ?? BRAND;
-  const _STORE = ov?.store ?? STORE;
-  const _CATEGORIES = ov?.categories ?? CATEGORIES;
-  const _ADDONS = ov?.addons ?? ADDONS;
-  const _PRODUCTS = ov?.products ?? PRODUCTS;
-  const _COUPONS = ov?.coupons ?? COUPONS;
-
-  // ===== Tema claro/escuro =====
-  const [theme, setTheme] = useState(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("themeRS") || "light";
-    }
-    return "light";
-  });
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("themeRS", theme);
-    }
-  }, [theme]);
+  const BRAND = ov?.brand ?? BRAND_FALLBACK;
+  const STORE = { ...STORE_FALLBACK, ...(ov?.store || {}) };
+  const CATEGORIES = ov?.categories ?? CATEGORIES_FALLBACK;
+  const ADDONS = ov?.addons ?? ADDONS_FALLBACK;
+  const PRODUCTS = ov?.products ?? PRODUCTS_FALLBACK;
+  const COUPONS = ov?.coupons ?? COUPONS_FALLBACK;
 
   // ===== Estados =====
   const [query, setQuery] = useState("");
@@ -156,7 +145,7 @@ export default function RoxoSaborMenu() {
   }, [router.query.pago]);
 
   const filtered = useMemo(() => {
-    return _PRODUCTS.filter(
+    return PRODUCTS.filter(
       (p) =>
         (category ? p.category === category : true) &&
         (query
@@ -165,7 +154,7 @@ export default function RoxoSaborMenu() {
               .includes(query.toLowerCase())
           : true)
     );
-  }, [_PRODUCTS, category, query]);
+  }, [PRODUCTS, category, query]);
 
   const subtotal = cart.reduce((s, i) => s + i.subtotal, 0);
   const discount =
@@ -200,7 +189,7 @@ export default function RoxoSaborMenu() {
   }
   function applyCoupon() {
     const code = couponCode.trim().toUpperCase();
-    const found = _COUPONS[code];
+    const found = COUPONS[code];
     if (found) setCouponInfo({ ...found, code });
     else setCouponInfo({ type: "msg", label: "Código inválido ou já utilizado." });
   }
@@ -239,19 +228,13 @@ export default function RoxoSaborMenu() {
 
   return (
     <div className="min-h-screen text-[15px] bg-[--bg] text-[--fg]">
-      {/* HEADER */}
+      {/* HEADER (sem botão de tema) */}
       <header className="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-[color:var(--line)]">
         <div className="max-w-md mx-auto px-4 py-3 flex items-center gap-3">
-          <button
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className="px-3 py-1.5 rounded-xl border border-[color:var(--line)] bg-white hover:bg-[color:var(--chip)]"
-          >
-            {theme === "dark" ? "🌞 Claro" : "🌙 Escuro"}
-          </button>
           <div className="mx-auto text-center">
-            <div className="text-sm text-[color:var(--muted)]">{_BRAND.name}</div>
+            <div className="text-sm text-[color:var(--muted)]">{BRAND.name}</div>
             <div className="text-xs text-[color:var(--muted)]">
-              {_STORE.deliveryHours}
+              {STORE.deliveryHours}
             </div>
           </div>
           <a
@@ -263,20 +246,26 @@ export default function RoxoSaborMenu() {
         </div>
       </header>
 
-      {/* HERO */}
+      {/* HERO (usa banner/logo do painel se houver) */}
       <section className="max-w-md mx-auto">
         <div className="relative overflow-hidden">
-          <img src="/hero.jpg" className="h-28 w-full object-cover" alt="" />
+          <img
+            src={STORE.bannerUrl || "/hero.jpg"}
+            className="h-28 w-full object-cover"
+            alt=""
+            onError={(e) => (e.currentTarget.src = "/hero.jpg")}
+          />
           <div className="mx-4 -mt-10 rounded-3xl bg-white p-4 shadow-md border border-[color:var(--line)]">
             <div className="flex items-center gap-3">
               <img
-                src="/logo-roxo.png"
+                src={STORE.logoUrl || "/logo-roxo.png"}
                 className="h-14 w-14 rounded-full border border-[color:var(--line)] object-cover bg-white"
-                alt=""
+                alt="Logo"
+                onError={(e) => (e.currentTarget.src = "/logo-roxo.png")}
               />
               <div className="flex-1">
                 <h1 className="text-lg font-semibold">
-                  {_BRAND.name} - Bairro Progresso
+                  {BRAND.name} - Bairro Progresso
                 </h1>
                 <div className="mt-0.5 text-sm text-[color:var(--muted)]">
                   Entrega rastreável • 2.7 km • Min R$ 20,00
@@ -301,7 +290,7 @@ export default function RoxoSaborMenu() {
         />
 
         <div className="mt-3 flex flex-wrap gap-8">
-          {_CATEGORIES.map((c) => (
+          {CATEGORIES.map((c) => (
             <button
               key={c.id}
               onClick={() => setCategory(c.id)}
@@ -318,7 +307,7 @@ export default function RoxoSaborMenu() {
 
         <div className="mt-4 text-sm rounded-2xl bg-white border border-[color:var(--line)] p-4 shadow-sm">
           <div className="font-semibold">🎟️ Raspadinha Roxo Sabor</div>
-          <p className="text-[color:var(--muted)]">{_STORE.raspadinhaCopy}</p>
+          <p className="text-[color:var(--muted)]">{STORE.raspadinhaCopy}</p>
           <div className="mt-3 flex gap-2">
             <input
               value={couponCode}
@@ -442,17 +431,17 @@ export default function RoxoSaborMenu() {
       {/* FOOTER */}
       <footer className="py-10 text-center text-xs text-[color:var(--muted)]">
         <div>
-          {_BRAND.name} • {_STORE.deliveryHours}
+          {BRAND.name} • {STORE.deliveryHours}
         </div>
         <div>Feito com ❤️ para vender mais açaí</div>
       </footer>
 
-      {/* THEME */}
+      {/* THEME (apenas claro) */}
       <style jsx global>{`
         :root {
-          --primary: ${_BRAND.colors.primary};
-          --primaryDark: ${_BRAND.colors.primaryDark};
-          --accent: ${_BRAND.colors.accent};
+          --primary: ${BRAND.colors.primary};
+          --primaryDark: ${BRAND.colors.primaryDark};
+          --accent: ${BRAND.colors.accent};
           --bg: #f7f7fb;
           --fg: #0f172a;
           --muted: #475569;
@@ -460,45 +449,13 @@ export default function RoxoSaborMenu() {
           --card: #ffffff;
           --chip: #f1f5f9;
         }
-        :root.dark {
-          --bg: ${_BRAND.colors.darkBg};
-          --fg: ${_BRAND.colors.darkFg};
-          --card: ${_BRAND.colors.cardDark};
-          --line: rgba(255, 255, 255, 0.1);
-          --chip: rgba(255, 255, 255, 0.06);
-        }
-        html,
-        body {
+        html, body {
           background: var(--bg);
-          color: var(--bg);
+          color: var(--fg);
         }
       `}</style>
-
-      <ThemeBinder theme={theme} />
-
-      {/* BOTTOM SHEET DO ITEM */}
-      <ItemSheet
-        open={sheetOpen}
-        onClose={() => setSheetOpen(false)}
-        product={sheetProduct}
-        addonsList={_ADDONS}
-        onConfirm={(payload) => {
-          if (!sheetProduct) return;
-          addToCart(sheetProduct, payload);
-          setSheetOpen(false);
-        }}
-      />
     </div>
   );
-}
-
-function ThemeBinder({ theme }) {
-  useEffect(() => {
-    const html = document.documentElement;
-    html.classList.remove("light", "dark");
-    html.classList.add(theme === "dark" ? "dark" : "light");
-  }, [theme]);
-  return null;
 }
 
 function ProductRow({ product, onClick, first }) {
@@ -535,7 +492,7 @@ function ProductRow({ product, onClick, first }) {
   );
 }
 
-function ItemSheet({ open, onClose, product, onConfirm, addonsList }) {
+function ItemSheet({ open, onClose, product, onConfirm, addonsList = [] }) {
   const [qty, setQty] = useState(1);
   const [noteItem, setNoteItem] = useState("");
   const [selectedSize, setSelectedSize] = useState(null);
