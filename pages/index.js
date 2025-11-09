@@ -3,6 +3,25 @@ import React, { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/router";
 
 const LS_KEY = "ilumo_cfg_v2";
+const LS_KEY_CHUNKS = LS_KEY + ":chunks";
+
+/* =================== Loader compatível com o Admin =================== */
+function loadBigJSON(key) {
+  try {
+    const chunkCount = Number(localStorage.getItem(LS_KEY_CHUNKS) || 0);
+    if (!chunkCount) {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+    }
+    let str = "";
+    for (let i = 0; i < chunkCount; i++) {
+      str += localStorage.getItem(`${key}:${i}`) || "";
+    }
+    return str ? JSON.parse(str) : null;
+  } catch {
+    return null;
+  }
+}
 
 /* ======================= DEFAULTS ======================= */
 const BRAND = {
@@ -107,7 +126,7 @@ const PRODUCTS = [
 const currency = (n) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-/* =================== Smart Image (com fallback) =================== */
+/* Imagem com normalização + fallback */
 function SmartImg({ src, alt = "", className = "", style = {} }) {
   const [s, setS] = React.useState(src || "");
   useEffect(() => setS(src || ""), [src]);
@@ -142,14 +161,13 @@ function SmartImg({ src, alt = "", className = "", style = {} }) {
 export default function RoxoSaborMenu() {
   const router = useRouter();
 
-  // overrides do painel
+  // Lê overrides salvos (inclusive em chunks)
   const [ov, setOv] = useState(null);
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(LS_KEY);
-      if (raw) setOv(JSON.parse(raw));
-    } catch {}
+    const stored = loadBigJSON(LS_KEY);
+    if (stored) setOv(stored);
   }, []);
+
   const _BRAND = ov?.brand ?? BRAND;
   const _STORE = ov?.store ?? STORE;
   const _CATEGORIES = ov?.categories ?? CATEGORIES;
@@ -230,12 +248,7 @@ export default function RoxoSaborMenu() {
         alert("Preencha nome, telefone e endereço para continuar.");
         return;
       }
-      const body = {
-        cart,
-        total: Number(subtotal.toFixed(2)),
-        note,
-        customer,
-      };
+      const body = { cart, total: Number(subtotal.toFixed(2)), note, customer };
       const r = await fetch("/api/create-payment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -257,7 +270,7 @@ export default function RoxoSaborMenu() {
 
   return (
     <div className="min-h-screen text-[15px] bg-[--bg] text-[--fg]">
-      {/* HEADER (tema claro, sem alternância) */}
+      {/* HEADER */}
       <header className="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-[color:var(--line)]">
         <div className="max-w-md mx-auto px-4 py-3 flex items-center gap-3">
           <div className="mx-auto text-center">
@@ -275,7 +288,7 @@ export default function RoxoSaborMenu() {
         </div>
       </header>
 
-      {/* HERO (banner dentro do card, texto abaixo da imagem) */}
+      {/* HERO dentro do card */}
       <section className="max-w-md mx-auto px-4 pt-4">
         <div className="rounded-3xl bg-white p-0 shadow-md border border-[color:var(--line)] overflow-hidden">
           <div className="h-36 w-full">
@@ -352,7 +365,7 @@ export default function RoxoSaborMenu() {
         </div>
       </main>
 
-      {/* RASPADINHA – AGORA PERTO DO SEU PEDIDO (depois dos produtos) */}
+      {/* RASPADINHA (depois dos produtos) */}
       <section className="max-w-md mx-auto px-4 pb-6">
         <div className="text-sm rounded-2xl bg-white border border-[color:var(--line)] p-4 shadow-sm">
           <div className="font-semibold flex items-center gap-2">
@@ -505,7 +518,6 @@ export default function RoxoSaborMenu() {
 }
 
 /* ======================= Componentes ======================= */
-
 function ProductRow({ product, onClick, first }) {
   return (
     <button
@@ -619,7 +631,7 @@ function ItemSheet({ open, onClose, product, onConfirm, addonsList }) {
             <div className="grid gap-2">
               {addonsList.map((o) => {
                 const selected = picked.has(o.id);
-                const disabled = !selected && picked.size >= MAX;
+                const disabled = !selected && picked.size >= 3;
                 return (
                   <button
                     key={o.id}
@@ -651,24 +663,11 @@ function ItemSheet({ open, onClose, product, onConfirm, addonsList }) {
 
         <div className="sticky bottom-0 flex items-center gap-3 border-t border-[color:var(--line)] bg-white p-4">
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setQty((q) => Math.max(1, q - 1))}
-              className="grid h-9 w-9 place-items-center rounded-full border border-[color:var(--line)]"
-            >
-              −
-            </button>
+            <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="grid h-9 w-9 place-items-center rounded-full border border-[color:var(--line)]">−</button>
             <div className="w-6 text-center font-semibold">{qty}</div>
-            <button
-              onClick={() => setQty((q) => q + 1)}
-              className="grid h-9 w-9 place-items-center rounded-full border border-[color:var(--line)]"
-            >
-              +
-            </button>
+            <button onClick={() => setQty((q) => q + 1)} className="grid h-9 w-9 place-items-center rounded-full border border-[color:var(--line)]">+</button>
           </div>
-          <button
-            className="flex-1 rounded-2xl bg-[--primary] py-3 text-center font-semibold text-white hover:opacity-90"
-            onClick={confirm}
-          >
+          <button className="flex-1 rounded-2xl bg-[--primary] py-3 text-center font-semibold text-white hover:opacity-90" onClick={confirm}>
             Adicionar — {currency(price)}
           </button>
         </div>
@@ -677,16 +676,7 @@ function ItemSheet({ open, onClose, product, onConfirm, addonsList }) {
   );
 }
 
-function CartSummary({
-  subtotal,
-  discount,
-  total,
-  note,
-  setNote,
-  customer,
-  setCustomer,
-  checkoutMP,
-}) {
+function CartSummary({ subtotal, discount, total, note, setNote, customer, setCustomer, checkoutMP }) {
   return (
     <div className="p-4 border-t md:border-t-0 md:border-l border-[color:var(--line)] bg-white">
       <div className="grid gap-3">
@@ -720,9 +710,7 @@ function CartSummary({
           className="px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
           placeholder="Endereço (rua, número e bairro)"
           value={customer.address}
-          onChange={(e) =>
-            setCustomer({ ...customer, address: e.target.value })
-          }
+          onChange={(e) => setCustomer({ ...customer, address: e.target.value })}
         />
 
         <div className="flex items-center justify-between text-sm pt-2">
