@@ -5,7 +5,7 @@ import { useRouter } from "next/router";
 const LS_KEY = "ilumo_cfg_v2";
 const LS_KEY_CHUNKS = LS_KEY + ":chunks";
 
-/* =================== Loader compatível com o Admin =================== */
+/* Loader compatível com o Admin (chunks) */
 function loadBigJSON(key) {
   try {
     const chunkCount = Number(localStorage.getItem(LS_KEY_CHUNKS) || 0);
@@ -23,7 +23,7 @@ function loadBigJSON(key) {
   }
 }
 
-/* ======================= DEFAULTS ======================= */
+/* ===== DEFAULTS ===== */
 const BRAND = {
   name: "Roxo Sabor",
   logoText: "ROXO SABOR",
@@ -42,6 +42,7 @@ const STORE = {
   whatsapp: "+55 31 993006358",
   instagram: "@roxosaboroficial",
   deliveryHours: "Todos os dias, 14h às 23h",
+  // defaults locais (se admin estiver sem esses campos)
   bannerUrl: "/hero.jpg",
   logoUrl: "/logo-roxo.png",
   raspadinhaCopy:
@@ -126,13 +127,24 @@ const PRODUCTS = [
 const currency = (n) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-/* Imagem com normalização + fallback */
+/* Placeholder inline (sempre existe) */
+const PLACEHOLDER =
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="120">
+       <rect width="100%" height="100%" fill="#f1f5f9"/>
+       <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
+             font-family="sans-serif" font-size="12" fill="#94a3b8">sem imagem</text>
+     </svg>`
+  );
+
+/* Imagem com normalização + fallback robusto */
 function SmartImg({ src, alt = "", className = "", style = {} }) {
   const [s, setS] = React.useState(src || "");
   useEffect(() => setS(src || ""), [src]);
 
   const normalize = (url) => {
-    if (!url) return "/placeholder.png";
+    if (!url || url === "undefined" || url === "null") return PLACEHOLDER;
     if (url.startsWith("data:")) return url;
     if (url.startsWith("http://")) return url.replace("http://", "https://");
     if (url.startsWith("https://")) return url;
@@ -148,10 +160,7 @@ function SmartImg({ src, alt = "", className = "", style = {} }) {
       loading="lazy"
       decoding="async"
       onError={(e) => {
-        const u = e.currentTarget.src;
-        if (u.endsWith(".png")) e.currentTarget.src = u.replace(/\.png$/i, ".jpg");
-        else if (u.match(/\.jpe?g$/i)) e.currentTarget.src = u.replace(/\.jpe?g$/i, ".png");
-        else e.currentTarget.src = "/placeholder.png";
+        e.currentTarget.src = PLACEHOLDER;
       }}
     />
   );
@@ -168,8 +177,9 @@ export default function RoxoSaborMenu() {
     if (stored) setOv(stored);
   }, []);
 
-  const _BRAND = ov?.brand ?? BRAND;
-  const _STORE = ov?.store ?? STORE;
+  // 🔥 Mescla defaults com o que veio do admin (evita apagar banner/logo quando string vazia)
+  const _BRAND = { ...BRAND, ...(ov?.brand || {}) };
+  const _STORE = { ...STORE, ...(ov?.store || {}) };
   const _CATEGORIES = ov?.categories ?? CATEGORIES;
   const _ADDONS = ov?.addons ?? ADDONS;
   const _PRODUCTS = ov?.products ?? PRODUCTS;
@@ -182,6 +192,7 @@ export default function RoxoSaborMenu() {
   const [note, setNote] = useState("");
   const [customer, setCustomer] = useState({ name: "", phone: "", address: "" });
   const [couponCode, setCouponCode] = useState("");
+  thead;
   const [couponInfo, setCouponInfo] = useState(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetProduct, setSheetProduct] = useState(null);
@@ -293,7 +304,7 @@ export default function RoxoSaborMenu() {
         <div className="rounded-3xl bg-white p-0 shadow-md border border-[color:var(--line)] overflow-hidden">
           <div className="h-36 w-full">
             <SmartImg
-              src={_STORE.bannerUrl || "/hero.jpg"}
+              src={_STORE.bannerUrl}
               alt="Banner"
               className="h-full w-full object-cover"
             />
@@ -302,7 +313,7 @@ export default function RoxoSaborMenu() {
           <div className="px-4 py-4">
             <div className="flex items-center gap-3">
               <SmartImg
-                src={_STORE.logoUrl || "/logo-roxo.png"}
+                src={_STORE.logoUrl}
                 alt="Logo"
                 className="h-14 w-14 rounded-full border border-[color:var(--line)] object-cover bg-white"
               />
@@ -485,7 +496,7 @@ export default function RoxoSaborMenu() {
         <div>Feito com ❤️ para vender mais açaí</div>
       </footer>
 
-      {/* THEME (apenas claro) */}
+      {/* THEME claro */}
       <style jsx global>{`
         :root {
           --primary: ${BRAND.colors.primary};
