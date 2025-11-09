@@ -4,7 +4,7 @@ import { useRouter } from "next/router";
 
 const LS_KEY = "ilumo_cfg_v2";
 
-/* ===== DEFAULTS ===== */
+/* ======================= DEFAULTS ======================= */
 const BRAND = {
   name: "Roxo Sabor",
   logoText: "ROXO SABOR",
@@ -14,6 +14,8 @@ const BRAND = {
     accent: "#22C55E",
     lightBg: "#f7f7fb",
     lightFg: "#0f172a",
+    cardDark: "#121212",
+    cardLight: "#ffffff",
   },
 };
 
@@ -21,10 +23,10 @@ const STORE = {
   whatsapp: "+55 31 993006358",
   instagram: "@roxosaboroficial",
   deliveryHours: "Todos os dias, 14h às 23h",
+  bannerUrl: "/hero.jpg",
+  logoUrl: "/logo-roxo.png",
   raspadinhaCopy:
     "Raspou, achou, ganhou! Digite seu código para validar seu prêmio.",
-  logoUrl: "/logo-roxo.png",
-  bannerUrl: "/hero.jpg",
 };
 
 const COUPONS = {
@@ -74,15 +76,73 @@ const PRODUCTS = [
     img: "/prod-acai.jpg",
     tags: ["popular"],
   },
+  {
+    id: "acai-gourmet",
+    category: "acai",
+    name: "Açaí Gourmet",
+    desc: "Com Nutella, Ninho e morangos frescos.",
+    price: 24.9,
+    img: "/prod-acai2.jpg",
+    tags: ["gourmet"],
+  },
+  {
+    id: "combo-duo",
+    category: "combos",
+    name: "Combo DUO (2 x 500 ml)",
+    desc: "2 copos de 500 ml + 2 adicionais cada.",
+    price: 36.9,
+    img: "/prod-acai2.jpg",
+    tags: ["família"],
+  },
+  ...ADDONS.map((a) => ({
+    id: `addon-${a.id}`,
+    category: "adicionais",
+    name: a.name,
+    desc: "Adicional avulso",
+    price: a.price,
+    img: "/addon.jpg",
+  })),
 ];
 
 const currency = (n) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+/* =================== Smart Image (com fallback) =================== */
+function SmartImg({ src, alt = "", className = "", style = {} }) {
+  const [s, setS] = React.useState(src || "");
+  useEffect(() => setS(src || ""), [src]);
+
+  const normalize = (url) => {
+    if (!url) return "/placeholder.png";
+    if (url.startsWith("data:")) return url;
+    if (url.startsWith("http://")) return url.replace("http://", "https://");
+    if (url.startsWith("https://")) return url;
+    return url.startsWith("/") ? url : `/${url}`;
+  };
+
+  return (
+    <img
+      src={normalize(s)}
+      alt={alt}
+      className={className}
+      style={style}
+      loading="lazy"
+      decoding="async"
+      onError={(e) => {
+        const u = e.currentTarget.src;
+        if (u.endsWith(".png")) e.currentTarget.src = u.replace(/\.png$/i, ".jpg");
+        else if (u.match(/\.jpe?g$/i)) e.currentTarget.src = u.replace(/\.jpe?g$/i, ".png");
+        else e.currentTarget.src = "/placeholder.png";
+      }}
+    />
+  );
+}
+
+/* ============================ Página ============================ */
 export default function RoxoSaborMenu() {
   const router = useRouter();
 
-  // Lê overrides do painel
+  // overrides do painel
   const [ov, setOv] = useState(null);
   useEffect(() => {
     try {
@@ -90,17 +150,16 @@ export default function RoxoSaborMenu() {
       if (raw) setOv(JSON.parse(raw));
     } catch {}
   }, []);
-
-  const _BRAND = ov?.brand ? { ...BRAND, ...ov.brand } : BRAND;
-  const _STORE = ov?.store ? { ...STORE, ...ov.store } : STORE;
+  const _BRAND = ov?.brand ?? BRAND;
+  const _STORE = ov?.store ?? STORE;
   const _CATEGORIES = ov?.categories ?? CATEGORIES;
   const _ADDONS = ov?.addons ?? ADDONS;
   const _PRODUCTS = ov?.products ?? PRODUCTS;
   const _COUPONS = ov?.coupons ?? COUPONS;
 
-  // Estados
+  // estados
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState(_CATEGORIES[0]?.id ?? "acai");
+  const [category, setCategory] = useState("acai");
   const [cart, setCart] = useState([]);
   const [note, setNote] = useState("");
   const [customer, setCustomer] = useState({ name: "", phone: "", address: "" });
@@ -118,7 +177,7 @@ export default function RoxoSaborMenu() {
   const filtered = useMemo(() => {
     return _PRODUCTS.filter(
       (p) =>
-        (!category || p.category === category) &&
+        (category ? p.category === category : true) &&
         (query
           ? (p.name + " " + (p.desc || ""))
               .toLowerCase()
@@ -135,7 +194,7 @@ export default function RoxoSaborMenu() {
   function addToCart(product, { size, addons = [], qty = 1, obs = "" } = {}) {
     const basePrice = size ? size.price : product.price;
     const addonsTotal = addons.reduce((s, a) => s + a.price, 0);
-    const s = (basePrice + addonsTotal) * qty;
+    const subtotal = (basePrice + addonsTotal) * qty;
     setCart((old) => [
       ...old,
       {
@@ -146,11 +205,10 @@ export default function RoxoSaborMenu() {
         addons,
         qty,
         obs,
-        subtotal: s,
+        subtotal,
       },
     ]);
   }
-
   function removeFromCart(id) {
     setCart((old) => old.filter((i) => i.id !== id));
   }
@@ -199,10 +257,10 @@ export default function RoxoSaborMenu() {
 
   return (
     <div className="min-h-screen text-[15px] bg-[--bg] text-[--fg]">
-      {/* HEADER */}
+      {/* HEADER (tema claro, sem alternância) */}
       <header className="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-[color:var(--line)]">
-        <div className="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="text-center flex-1">
+        <div className="max-w-md mx-auto px-4 py-3 flex items-center gap-3">
+          <div className="mx-auto text-center">
             <div className="text-sm text-[color:var(--muted)]">{_BRAND.name}</div>
             <div className="text-xs text-[color:var(--muted)]">
               {_STORE.deliveryHours}
@@ -217,24 +275,23 @@ export default function RoxoSaborMenu() {
         </div>
       </header>
 
-      {/* HERO (banner dentro do card) */}
-      <section className="max-w-md mx-auto px-4 pt-3">
-        <div className="rounded-3xl bg-white shadow-md border border-[color:var(--line)] overflow-hidden">
-          <div className="h-32 w-full">
-            <img
+      {/* HERO (banner dentro do card, texto abaixo da imagem) */}
+      <section className="max-w-md mx-auto px-4 pt-4">
+        <div className="rounded-3xl bg-white p-0 shadow-md border border-[color:var(--line)] overflow-hidden">
+          <div className="h-36 w-full">
+            <SmartImg
               src={_STORE.bannerUrl || "/hero.jpg"}
-              className="h-full w-full object-cover"
               alt="Banner"
-              onError={(e) => (e.currentTarget.src = "/placeholder.png")}
+              className="h-full w-full object-cover"
             />
           </div>
-          <div className="p-4">
+
+          <div className="px-4 py-4">
             <div className="flex items-center gap-3">
-              <img
+              <SmartImg
                 src={_STORE.logoUrl || "/logo-roxo.png"}
-                className="h-14 w-14 rounded-full border border-[color:var(--line)] object-cover bg-white"
                 alt="Logo"
-                onError={(e) => (e.currentTarget.src = "/placeholder.png")}
+                className="h-14 w-14 rounded-full border border-[color:var(--line)] object-cover bg-white"
               />
               <div className="flex-1">
                 <h1 className="text-lg font-semibold">
@@ -246,6 +303,7 @@ export default function RoxoSaborMenu() {
                 <div className="mt-1 text-sm">⭐ 5,0 (4 avaliações)</div>
               </div>
             </div>
+
             <div className="mt-3 rounded-xl bg-[color:var(--chip)] p-2 text-center text-sm text-[color:var(--muted)]">
               Loja fechada • Abre amanhã às 09:00
             </div>
@@ -259,13 +317,13 @@ export default function RoxoSaborMenu() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Buscar no cardápio…"
-        className="w-full px-4 py-3 rounded-2xl bg-white border border-[color:var(--line)] outline-none shadow-sm"
+          className="w-full px-4 py-3 rounded-2xl bg-white border border-[color:var(--line)] outline-none shadow-sm"
         />
+
         <div className="mt-3 flex flex-wrap gap-8">
           {_CATEGORIES.map((c) => (
             <button
               key={c.id}
-              type="button"
               onClick={() => setCategory(c.id)}
               className={`px-0 py-1.5 border-b-2 -mb-px text-sm ${
                 category === c.id
@@ -279,7 +337,7 @@ export default function RoxoSaborMenu() {
         </div>
       </section>
 
-      {/* PRODUTOS */}
+      {/* LISTA DE PRODUTOS */}
       <main className="max-w-md mx-auto px-2 pb-6">
         <h2 className="px-2 py-3 text-xl font-semibold">Monte Seu Açaí</h2>
         <div className="rounded-2xl bg-white border border-[color:var(--line)] shadow-sm">
@@ -294,11 +352,13 @@ export default function RoxoSaborMenu() {
         </div>
       </main>
 
-      {/* RASPADINHA (após produtos) */}
+      {/* RASPADINHA – AGORA PERTO DO SEU PEDIDO (depois dos produtos) */}
       <section className="max-w-md mx-auto px-4 pb-6">
         <div className="text-sm rounded-2xl bg-white border border-[color:var(--line)] p-4 shadow-sm">
-          <div className="font-semibold">🎟️ Raspadinha Roxo Sabor</div>
-          <p className="text-[color:var(--muted)]">{_STORE.raspadinhaCopy}</p>
+          <div className="font-semibold flex items-center gap-2">
+            <span>🎟️</span> Raspadinha Roxo Sabor
+          </div>
+          <p className="text-[color:var(--muted)] mt-1">{_STORE.raspadinhaCopy}</p>
           <div className="mt-3 flex gap-2">
             <input
               value={couponCode}
@@ -307,7 +367,6 @@ export default function RoxoSaborMenu() {
               className="flex-1 px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
             />
             <button
-              type="button"
               onClick={applyCoupon}
               className="px-3 py-2 rounded-xl bg-[--primary] text-white hover:opacity-90"
             >
@@ -331,7 +390,6 @@ export default function RoxoSaborMenu() {
                 <h2 className="text-lg font-bold tracking-tight">Seu pedido</h2>
                 {cart.length > 0 && (
                   <button
-                    type="button"
                     onClick={clearCart}
                     className="text-sm text-[color:var(--muted)] hover:opacity-100"
                   >
@@ -381,7 +439,6 @@ export default function RoxoSaborMenu() {
                         <div className="text-sm mt-1">{currency(i.subtotal)}</div>
                       </div>
                       <button
-                        type="button"
                         onClick={() => removeFromCart(i.id)}
                         className="px-2 py-1 rounded-lg border border-[color:var(--line)] hover:bg-[color:var(--chip)] text-xs"
                       >
@@ -407,6 +464,7 @@ export default function RoxoSaborMenu() {
         </div>
       </section>
 
+      {/* FOOTER */}
       <footer className="py-10 text-center text-xs text-[color:var(--muted)]">
         <div>
           {_BRAND.name} • {_STORE.deliveryHours}
@@ -414,12 +472,12 @@ export default function RoxoSaborMenu() {
         <div>Feito com ❤️ para vender mais açaí</div>
       </footer>
 
-      {/* THEME CLARO FIXO */}
+      {/* THEME (apenas claro) */}
       <style jsx global>{`
         :root {
-          --primary: ${_BRAND.colors.primary};
-          --primaryDark: ${_BRAND.colors.primaryDark};
-          --accent: ${_BRAND.colors.accent};
+          --primary: ${BRAND.colors.primary};
+          --primaryDark: ${BRAND.colors.primaryDark};
+          --accent: ${BRAND.colors.accent};
           --bg: #f7f7fb;
           --fg: #0f172a;
           --muted: #475569;
@@ -430,7 +488,7 @@ export default function RoxoSaborMenu() {
         html, body { background: var(--bg); color: var(--fg); }
       `}</style>
 
-      {/* Bottom Sheet */}
+      {/* Bottom Sheet do item */}
       <ItemSheet
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
@@ -446,16 +504,21 @@ export default function RoxoSaborMenu() {
   );
 }
 
-/* ==== Componentes auxiliares ==== */
+/* ======================= Componentes ======================= */
+
 function ProductRow({ product, onClick, first }) {
   return (
     <button
-      type="button"
       onClick={onClick}
       className={`w-full px-4 py-4 text-left block ${
         !first ? "border-t border-[color:var(--line)]" : ""
       }`}
     >
+      {product.tags?.includes("popular") && (
+        <span className="mb-2 inline-block rounded-full bg-[color:var(--chip)] border border-[color:var(--line)] px-2 py-0.5 text-xs text-[color:var(--muted)]">
+          O mais pedido
+        </span>
+      )}
       <div className="flex gap-3">
         <div className="flex-1">
           <h3 className="font-semibold leading-snug">{product.name}</h3>
@@ -466,11 +529,10 @@ function ProductRow({ product, onClick, first }) {
           )}
           <div className="mt-2 font-semibold">{currency(product.price)}</div>
         </div>
-        <img
+        <SmartImg
           src={product.img}
-          className="h-24 w-24 rounded-2xl object-cover border border-[color:var(--line)]"
           alt={product.name}
-          onError={(e) => (e.currentTarget.src = "/placeholder.png")}
+          className="h-24 w-24 rounded-2xl object-cover border border-[color:var(--line)]"
         />
       </div>
     </button>
@@ -512,30 +574,17 @@ function ItemSheet({ open, onClose, product, onConfirm, addonsList }) {
   }
 
   function confirm() {
-    onConfirm({
-      size: selectedSize,
-      addons,
-      qty,
-      obs: noteItem,
-    });
+    onConfirm({ size: selectedSize, addons, qty, obs: noteItem });
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 grid grid-rows-[1fr_auto] bg-black/30"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50 grid grid-rows-[1fr_auto] bg-black/30" onClick={onClose}>
       <div
         className="mt-auto rounded-t-3xl bg-white border border-[color:var(--line)] shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="h-40 w-full overflow-hidden rounded-t-3xl">
-          <img
-            src={product.img}
-            className="h-full w-full object-cover"
-            alt=""
-            onError={(e) => (e.currentTarget.src = "/placeholder.png")}
-          />
+          <SmartImg src={product.img} alt="" className="h-full w-full object-cover" />
         </div>
 
         <div className="p-4">
@@ -549,7 +598,6 @@ function ItemSheet({ open, onClose, product, onConfirm, addonsList }) {
               {product.sizes.map((s) => (
                 <button
                   key={s.code}
-                  type="button"
                   onClick={() => setSelectedSize(s)}
                   className={`px-3 py-1.5 rounded-xl border text-sm ${
                     selectedSize?.code === s.code
@@ -566,32 +614,23 @@ function ItemSheet({ open, onClose, product, onConfirm, addonsList }) {
           <div className="mt-4">
             <div className="mb-2 text-base font-semibold">
               Turbine Seu Açaí{" "}
-              <span className="text-[color:var(--muted)]">
-                • Escolha até 3 opções
-              </span>
+              <span className="text-[color:var(--muted)]">• Escolha até 3 opções</span>
             </div>
             <div className="grid gap-2">
               {addonsList.map((o) => {
                 const selected = picked.has(o.id);
-                const disabled = !selected && picked.size >= 3;
+                const disabled = !selected && picked.size >= MAX;
                 return (
                   <button
                     key={o.id}
-                    type="button"
                     disabled={disabled}
                     onClick={() => toggle(o.id)}
                     className={`flex w-full items-center justify-between rounded-xl border p-3 text-left
-                      ${
-                        selected
-                          ? "border-[--primary] bg-[color:var(--chip)]"
-                          : "border-[color:var(--line)] bg-white"
-                      }
+                      ${selected ? "border-[--primary] bg-[color:var(--chip)]" : "border-[color:var(--line)] bg-white"}
                       ${disabled ? "opacity-50" : ""}`}
                   >
                     <span>{o.name}</span>
-                    <span className="text-[color:var(--muted)]">
-                      {currency(o.price)}
-                    </span>
+                    <span className="text-[color:var(--muted)]">{currency(o.price)}</span>
                   </button>
                 );
               })}
@@ -613,7 +652,6 @@ function ItemSheet({ open, onClose, product, onConfirm, addonsList }) {
         <div className="sticky bottom-0 flex items-center gap-3 border-t border-[color:var(--line)] bg-white p-4">
           <div className="flex items-center gap-3">
             <button
-              type="button"
               onClick={() => setQty((q) => Math.max(1, q - 1))}
               className="grid h-9 w-9 place-items-center rounded-full border border-[color:var(--line)]"
             >
@@ -621,7 +659,6 @@ function ItemSheet({ open, onClose, product, onConfirm, addonsList }) {
             </button>
             <div className="w-6 text-center font-semibold">{qty}</div>
             <button
-              type="button"
               onClick={() => setQty((q) => q + 1)}
               className="grid h-9 w-9 place-items-center rounded-full border border-[color:var(--line)]"
             >
@@ -629,7 +666,6 @@ function ItemSheet({ open, onClose, product, onConfirm, addonsList }) {
             </button>
           </div>
           <button
-            type="button"
             className="flex-1 rounded-2xl bg-[--primary] py-3 text-center font-semibold text-white hover:opacity-90"
             onClick={confirm}
           >
@@ -673,21 +709,21 @@ function CartSummary({
             value={customer.name}
             onChange={(e) => setCustomer({ ...customer, name: e.target.value })}
           />
-          <input
-            className="px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
-            placeholder="Telefone (WhatsApp)"
-            value={customer.phone}
-            onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
-          />
-          <input
-            className="px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
-            placeholder="Endereço (rua, número e bairro)"
-            value={customer.address}
-            onChange={(e) =>
-              setCustomer({ ...customer, address: e.target.value })
-            }
-          />
         </div>
+        <input
+          className="px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
+          placeholder="Telefone (WhatsApp)"
+          value={customer.phone}
+          onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
+        />
+        <input
+          className="px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
+          placeholder="Endereço (rua, número e bairro)"
+          value={customer.address}
+          onChange={(e) =>
+            setCustomer({ ...customer, address: e.target.value })
+          }
+        />
 
         <div className="flex items-center justify-between text-sm pt-2">
           <span className="text-[color:var(--muted)]">Subtotal</span>
@@ -705,7 +741,6 @@ function CartSummary({
         </div>
 
         <button
-          type="button"
           onClick={checkoutMP}
           className="mt-2 px-4 py-3 rounded-2xl text-center font-medium bg-[--primary] text-white hover:opacity-90 disabled:opacity-50"
           disabled={subtotal <= 0}
