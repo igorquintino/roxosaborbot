@@ -1,3 +1,4 @@
+// pages/admin.js
 import React, { useEffect, useMemo, useState } from "react";
 
 const LS_KEY = "ilumo_cfg_v2";
@@ -6,6 +7,15 @@ const PIN_ENV = process.env.NEXT_PUBLIC_ADMIN_PIN || "";
 
 // clone compatível
 const jclone = (o) => JSON.parse(JSON.stringify(o ?? {}));
+
+// util: converte arquivo -> DataURL (para salvar no localStorage)
+const fileToDataURL = (file) =>
+  new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
 
 // defaults compatíveis com seu index
 const DEFAULT_CFG = {
@@ -30,6 +40,9 @@ const DEFAULT_CFG = {
     deliveryHours: "Todos os dias, 14h às 23h",
     raspadinhaCopy:
       "Raspou, achou, ganhou! Digite seu código para validar seu prêmio.",
+    // 🔥 novos campos
+    logoUrl: "/logo-roxo.png",
+    bannerUrl: "/hero.jpg",
   },
   categories: [
     { id: "promos", name: "Promoções" },
@@ -87,6 +100,10 @@ function normalize(raw) {
   c.categories = Array.isArray(c.categories) ? c.categories : [];
   c.addons = Array.isArray(c.addons) ? c.addons : [];
   c.products = Array.isArray(c.products) ? c.products : [];
+
+  // garante string nos novos campos
+  c.store.logoUrl = String(c.store.logoUrl || "");
+  c.store.bannerUrl = String(c.store.bannerUrl || "");
 
   c.categories = c.categories.map((x) => ({
     id: String(x?.id || ""),
@@ -192,6 +209,19 @@ export default function Admin() {
     r.readAsText(f);
   }
 
+  // upload helper para logo/banner
+  async function handleImageUpload(kind, file) {
+    if (!file) return;
+    const dataUrl = await fileToDataURL(file);
+    setCfg((prev) => {
+      const draft = jclone(prev);
+      draft.store = draft.store || {};
+      if (kind === "logo") draft.store.logoUrl = dataUrl;
+      if (kind === "banner") draft.store.bannerUrl = dataUrl;
+      return normalize(draft);
+    });
+  }
+
   if (!mounted) return null;
 
   if (!ok) {
@@ -247,6 +277,81 @@ export default function Admin() {
             <input className="input" value={cfg.brand.name} onChange={(e)=>setCfg({...cfg, brand:{...cfg.brand, name:e.target.value}})} />
             <label className="text-sm">Logo Text</label>
             <input className="input" value={cfg.brand.logoText} onChange={(e)=>setCfg({...cfg, brand:{...cfg.brand, logoText:e.target.value}})} />
+
+            {/* 🔥 Logo */}
+            <div className="mt-2 grid gap-2">
+              <label className="text-sm">Logo (URL ou upload)</label>
+              <div className="flex items-center gap-3">
+                <input
+                  className="input flex-1"
+                  placeholder="https://... ou DataURL"
+                  value={cfg.store.logoUrl}
+                  onChange={(e)=>setCfg({...cfg, store:{...cfg.store, logoUrl:e.target.value}})}
+                />
+                <label className="btn cursor-pointer">
+                  Upload
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e)=>handleImageUpload("logo", e.target.files?.[0])}
+                  />
+                </label>
+              </div>
+              {cfg.store.logoUrl ? (
+                <div className="flex items-center gap-3">
+                  <img
+                    src={cfg.store.logoUrl}
+                    alt="logo preview"
+                    className="h-16 w-16 rounded-lg object-cover border border-[#e5e7eb] bg-white"
+                  />
+                  <button
+                    className="btn"
+                    onClick={()=>setCfg({...cfg, store:{...cfg.store, logoUrl:""}})}
+                  >
+                    Remover
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
+            {/* 🔥 Banner */}
+            <div className="mt-3 grid gap-2">
+              <label className="text-sm">Banner (URL ou upload)</label>
+              <div className="flex items-center gap-3">
+                <input
+                  className="input flex-1"
+                  placeholder="https://... ou DataURL"
+                  value={cfg.store.bannerUrl}
+                  onChange={(e)=>setCfg({...cfg, store:{...cfg.store, bannerUrl:e.target.value}})}
+                />
+                <label className="btn cursor-pointer">
+                  Upload
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e)=>handleImageUpload("banner", e.target.files?.[0])}
+                  />
+                </label>
+              </div>
+              {cfg.store.bannerUrl ? (
+                <div className="flex items-center gap-3">
+                  <img
+                    src={cfg.store.bannerUrl}
+                    alt="banner preview"
+                    className="h-24 w-full max-w-sm rounded-lg object-cover border border-[#e5e7eb] bg-white"
+                  />
+                  <button
+                    className="btn"
+                    onClick={()=>setCfg({...cfg, store:{...cfg.store, bannerUrl:""}})}
+                  >
+                    Remover
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
             <label className="text-sm">WhatsApp</label>
             <input className="input" value={cfg.store.whatsapp} onChange={(e)=>setCfg({...cfg, store:{...cfg.store, whatsapp:e.target.value}})} />
             <label className="text-sm">Instagram</label>
@@ -256,6 +361,10 @@ export default function Admin() {
             <label className="text-sm">Texto raspadinha</label>
             <textarea className="input h-24" value={cfg.store.raspadinhaCopy} onChange={(e)=>setCfg({...cfg, store:{...cfg.store, raspadinhaCopy:e.target.value}})} />
           </div>
+          <p className="mt-2 text-xs text-[#64748b]">
+            Dica: Upload salva a imagem como <strong>DataURL</strong> no seu navegador (localStorage).
+            Para usar CDN, cole o link no campo de URL.
+          </p>
         </section>
 
         {/* Categorias */}
