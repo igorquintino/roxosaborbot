@@ -1,23 +1,97 @@
 // pages/admin.js
 import React, { useEffect, useMemo, useState } from "react";
 
+/* ==============================
+   Armazenamento e segurança
+================================= */
 const LS_KEY = "ilumo_cfg_v2";
+const LS_KEY_CHUNKS = LS_KEY + ":chunks";
 const ADMIN_OK_KEY = "rs_admin_ok";
 const PIN_ENV = process.env.NEXT_PUBLIC_ADMIN_PIN || "";
 
-// clone compatível
+/* Salva JSON grande em chunks para evitar limite do localStorage (5MB/item) */
+function saveBigJSON(key, obj) {
+  const str = JSON.stringify(obj);
+  try {
+    localStorage.setItem(key, str);          // tenta salvar normal
+    localStorage.removeItem(LS_KEY_CHUNKS);  // limpa chunks antigos
+    let i = 0;
+    while (localStorage.getItem(`${key}:${i}`)) {
+      localStorage.removeItem(`${key}:${i++}`);
+    }
+    return;
+  } catch {
+    // fallback: split em ~400k chars
+    const CHUNK = 400000;
+    const total = Math.ceil(str.length / CHUNK);
+    localStorage.setItem(LS_KEY_CHUNKS, String(total));
+    for (let i = 0; i < total; i++) {
+      localStorage.setItem(`${key}:${i}`, str.slice(i * CHUNK, (i + 1) * CHUNK));
+    }
+  }
+}
+
+/* Lê JSON salvo em chunks (ou normal) */
+function loadBigJSON(key) {
+  const chunkCount = Number(localStorage.getItem(LS_KEY_CHUNKS) || 0);
+  if (!chunkCount) {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  }
+  let str = "";
+  for (let i = 0; i < chunkCount; i++) {
+    str += localStorage.getItem(`${key}:${i}`) || "";
+  }
+  return str ? JSON.parse(str) : null;
+}
+
+/* ==============================
+   Helpers
+================================= */
 const jclone = (o) => JSON.parse(JSON.stringify(o ?? {}));
 
-// util: converte arquivo -> DataURL (para salvar no localStorage)
-const fileToDataURL = (file) =>
-  new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result));
-    r.onerror = reject;
-    r.readAsDataURL(file);
+async function fileToDataURLCompressed(file, { maxW = 1000, maxKB = 280 } = {}) {
+  const dataUrl = await new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = () => res(String(fr.result));
+    fr.onerror = rej;
+    fr.readAsDataURL(file);
   });
 
-// defaults compatíveis com seu index
+  // cria imagem
+  const img = await new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = rej;
+    im.src = dataUrl;
+  });
+
+  // canvas scale
+  const scale = Math.min(1, maxW / (img.width || maxW));
+  const w = Math.max(1, Math.round((img.width || maxW) * scale));
+  const h = Math.max(1, Math.round((img.height || maxW) * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(img, 0, 0, w, h);
+
+  // qualidade adaptativa até atingir ~maxKB
+  let q = 0.92;
+  let out = canvas.toDataURL("image/jpeg", q);
+  const maxBytes = maxKB * 1024;
+
+  while (out.length > maxBytes * 1.37 && q > 0.4) { // 1.37 ≈ overhead base64
+    q -= 0.08;
+    out = canvas.toDataURL("image/jpeg", q);
+  }
+  return out;
+}
+
+/* ==============================
+   Defaults (compatíveis com index)
+================================= */
 const DEFAULT_CFG = {
   brand: {
     name: "Roxo Sabor",
@@ -38,11 +112,9 @@ const DEFAULT_CFG = {
     whatsapp: "+55 31 993006358",
     instagram: "@roxosaboroficial",
     deliveryHours: "Todos os dias, 14h às 23h",
-    raspadinhaCopy:
-      "Raspou, achou, ganhou! Digite seu código para validar seu prêmio.",
-    // 🔥 novos campos
-    logoUrl: "/logo-roxo.png",
-    bannerUrl: "/hero.jpg",
+    raspadinhaCopy: "Raspou, achou, ganhou! Digite seu código para validar seu prêmio.",
+    logoUrl: "",    // <-- novo
+    bannerUrl: "",  // <-- novo
   },
   categories: [
     { id: "promos", name: "Promoções" },
@@ -68,6 +140,7 @@ const DEFAULT_CFG = {
       price: 9.99,
       img: "/prod-acai.jpg",
       tags: ["promo", "popular"],
+      sizes: [],
     },
     {
       id: "acai-330",
@@ -91,29 +164,18 @@ const DEFAULT_CFG = {
   },
 };
 
-// normalizador seguro
+/* Normaliza estrutura */
 function normalize(raw) {
-  const c = jclone(raw);
+  const c = jclone(raw || {});
   c.brand = c.brand || DEFAULT_CFG.brand;
-  c.store = c.store || {};
+  c.store = { ...DEFAULT_CFG.store, ...(c.store || {}) };
   c.coupons = c.coupons || {};
   c.categories = Array.isArray(c.categories) ? c.categories : [];
   c.addons = Array.isArray(c.addons) ? c.addons : [];
   c.products = Array.isArray(c.products) ? c.products : [];
 
-  // garante string nos novos campos
-  c.store.logoUrl = String(c.store.logoUrl || "");
-  c.store.bannerUrl = String(c.store.bannerUrl || "");
-
-  c.categories = c.categories.map((x) => ({
-    id: String(x?.id || ""),
-    name: String(x?.name || ""),
-  }));
-  c.addons = c.addons.map((x) => ({
-    id: String(x?.id || ""),
-    name: String(x?.name || ""),
-    price: Number(x?.price || 0),
-  }));
+  c.categories = c.categories.map((x) => ({ id: String(x?.id || ""), name: String(x?.name || "") }));
+  c.addons = c.addons.map((x) => ({ id: String(x?.id || ""), name: String(x?.name || ""), price: Number(x?.price || 0) }));
   c.products = c.products.map((p) => ({
     id: String(p?.id || ""),
     category: String(p?.category || ""),
@@ -123,16 +185,15 @@ function normalize(raw) {
     img: String(p?.img || ""),
     tags: Array.isArray(p?.tags) ? p.tags.filter(Boolean) : [],
     sizes: Array.isArray(p?.sizes)
-      ? p.sizes.map((s) => ({
-          code: String(s?.code || ""),
-          label: String(s?.label || ""),
-          price: Number(s?.price || 0),
-        }))
+      ? p.sizes.map((s) => ({ code: String(s?.code || ""), label: String(s?.label || ""), price: Number(s?.price || 0) }))
       : [],
   }));
   return c;
 }
 
+/* ==============================
+   Componente principal
+================================= */
 export default function Admin() {
   const [mounted, setMounted] = useState(false);
   const [ok, setOk] = useState(false);
@@ -142,13 +203,11 @@ export default function Admin() {
   useEffect(() => {
     setMounted(true);
     try {
-      const okFlag = localStorage.getItem(ADMIN_OK_KEY);
-      if (okFlag === "1") setOk(true);
+      if (localStorage.getItem(ADMIN_OK_KEY) === "1") setOk(true);
     } catch {}
     try {
-      const raw = localStorage.getItem(LS_KEY);
-      const base = raw ? JSON.parse(raw) : DEFAULT_CFG;
-      setCfg(normalize(base));
+      const stored = loadBigJSON(LS_KEY) || DEFAULT_CFG;
+      setCfg(normalize(stored));
     } catch {
       setCfg(normalize(DEFAULT_CFG));
     }
@@ -166,7 +225,7 @@ export default function Admin() {
 
   function save() {
     try {
-      localStorage.setItem(LS_KEY, JSON.stringify(cfg));
+      saveBigJSON(LS_KEY, normalize(cfg));
       alert("✅ Salvo!");
     } catch {
       alert("Falha ao salvar.");
@@ -182,44 +241,18 @@ export default function Admin() {
     });
   }
 
-  function downloadJson() {
-    const blob = new Blob([JSON.stringify(cfg, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "ilumo_cfg_v2.json";
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  function uploadJson(e) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const r = new FileReader();
-    r.onload = () => {
-      try {
-        setCfg(normalize(JSON.parse(String(r.result))));
-        alert("✅ Config carregada (salve para aplicar)!");
-      } catch {
-        alert("Arquivo inválido.");
-      }
+  // Uploads (logo/banner/produto)
+  async function handleUpload(setField, opts) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = async (e) => {
+      const f = e.target.files?.[0];
+      if (!f) return;
+      const dataUrl = await fileToDataURLCompressed(f, opts);
+      setField(dataUrl);
     };
-    r.readAsText(f);
-  }
-
-  // upload helper para logo/banner
-  async function handleImageUpload(kind, file) {
-    if (!file) return;
-    const dataUrl = await fileToDataURL(file);
-    setCfg((prev) => {
-      const draft = jclone(prev);
-      draft.store = draft.store || {};
-      if (kind === "logo") draft.store.logoUrl = dataUrl;
-      if (kind === "banner") draft.store.bannerUrl = dataUrl;
-      return normalize(draft);
-    });
+    input.click();
   }
 
   if (!mounted) return null;
@@ -227,10 +260,7 @@ export default function Admin() {
   if (!ok) {
     return (
       <div className="min-h-screen grid place-items-center bg-[#f7f7fb] text-[#0f172a]">
-        <form
-          onSubmit={checkPin}
-          className="rounded-2xl bg-white border border-[#e5e7eb] p-6 w-full max-w-sm shadow-sm"
-        >
+        <form onSubmit={checkPin} className="rounded-2xl bg-white border border-[#e5e7eb] p-6 w-full max-w-sm shadow-sm">
           <h1 className="text-xl font-semibold">Acesso ao Painel</h1>
           <p className="text-sm text-[#475569] mt-1">Digite o PIN</p>
           <input
@@ -240,9 +270,7 @@ export default function Admin() {
             className="w-full mt-4 px-3 py-2 rounded-xl border border-[#e5e7eb] outline-none bg-white"
             placeholder="PIN"
           />
-          <button className="mt-3 w-full rounded-xl bg-[#6D28D9] text-white py-2.5 hover:opacity-90">
-            Entrar
-          </button>
+          <button className="mt-3 w-full rounded-xl bg-[#6D28D9] text-white py-2.5 hover:opacity-90">Entrar</button>
           <a href="/" className="block mt-3 text-center text-sm text-[#475569] underline">Voltar ao site</a>
         </form>
       </div>
@@ -258,10 +286,19 @@ export default function Admin() {
           <a href="/" className="px-3 py-1.5 rounded-xl border border-[#e5e7eb] bg-white hover:bg-[#f1f5f9]">← Voltar</a>
           <div className="mx-auto text-sm">Painel Ilumo • editar loja e cardápio</div>
           <div className="flex gap-2">
-            <button onClick={downloadJson} className="px-3 py-1.5 rounded-xl border border-[#e5e7eb] bg-white hover:bg-[#f1f5f9]">Exportar</button>
+            <button onClick={() => { const b = new Blob([JSON.stringify(cfg, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(b); const a = document.createElement("a"); a.href = url; a.download = "ilumo_cfg_v2.json"; a.click(); URL.revokeObjectURL(url); }} className="px-3 py-1.5 rounded-xl border border-[#e5e7eb] bg-white hover:bg-[#f1f5f9]">Exportar</button>
             <label className="px-3 py-1.5 rounded-xl border border-[#e5e7eb] bg-white hover:bg-[#f1f5f9] cursor-pointer">
               Importar
-              <input type="file" accept="application/json" onChange={uploadJson} className="hidden" />
+              <input type="file" accept="application/json" onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                const r = new FileReader();
+                r.onload = () => {
+                  try { setCfg(normalize(JSON.parse(String(r.result)))); alert("✅ Config carregada (salve para aplicar)!"); }
+                  catch { alert("Arquivo inválido."); }
+                };
+                r.readAsText(f);
+              }} className="hidden" />
             </label>
             <button onClick={save} className="px-3 py-1.5 rounded-xl bg-[#6D28D9] text-white hover:opacity-90">Salvar</button>
           </div>
@@ -275,96 +312,43 @@ export default function Admin() {
           <div className="mt-3 grid gap-2">
             <label className="text-sm">Nome</label>
             <input className="input" value={cfg.brand.name} onChange={(e)=>setCfg({...cfg, brand:{...cfg.brand, name:e.target.value}})} />
-            <label className="text-sm">Logo Text</label>
-            <input className="input" value={cfg.brand.logoText} onChange={(e)=>setCfg({...cfg, brand:{...cfg.brand, logoText:e.target.value}})} />
 
-            {/* 🔥 Logo */}
-            <div className="mt-2 grid gap-2">
-              <label className="text-sm">Logo (URL ou upload)</label>
-              <div className="flex items-center gap-3">
-                <input
-                  className="input flex-1"
-                  placeholder="https://... ou DataURL"
-                  value={cfg.store.logoUrl}
-                  onChange={(e)=>setCfg({...cfg, store:{...cfg.store, logoUrl:e.target.value}})}
-                />
-                <label className="btn cursor-pointer">
-                  Upload
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e)=>handleImageUpload("logo", e.target.files?.[0])}
-                  />
-                </label>
-              </div>
-              {cfg.store.logoUrl ? (
-                <div className="flex items-center gap-3">
-                  <img
-                    src={cfg.store.logoUrl}
-                    alt="logo preview"
-                    className="h-16 w-16 rounded-lg object-cover border border-[#e5e7eb] bg-white"
-                  />
-                  <button
-                    className="btn"
-                    onClick={()=>setCfg({...cfg, store:{...cfg.store, logoUrl:""}})}
-                  >
-                    Remover
-                  </button>
-                </div>
-              ) : null}
+            <label className="text-sm">Logo (URL ou upload)</label>
+            <div className="grid grid-cols-[1fr_auto] gap-2">
+              <input className="input" value={cfg.store.logoUrl || ""} onChange={(e)=>setCfg({...cfg, store:{...cfg.store, logoUrl:e.target.value}})} />
+              <button className="btn" onClick={() => handleUpload((dataUrl)=>setCfg((p)=>({...p, store:{...p.store, logoUrl:dataUrl}})), { maxW: 400, maxKB: 80 })}>Upload</button>
             </div>
-
-            {/* 🔥 Banner */}
-            <div className="mt-3 grid gap-2">
-              <label className="text-sm">Banner (URL ou upload)</label>
+            {cfg.store.logoUrl ? (
               <div className="flex items-center gap-3">
-                <input
-                  className="input flex-1"
-                  placeholder="https://... ou DataURL"
-                  value={cfg.store.bannerUrl}
-                  onChange={(e)=>setCfg({...cfg, store:{...cfg.store, bannerUrl:e.target.value}})}
-                />
-                <label className="btn cursor-pointer">
-                  Upload
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e)=>handleImageUpload("banner", e.target.files?.[0])}
-                  />
-                </label>
+                <img src={cfg.store.logoUrl} alt="logo" className="h-16 w-16 rounded-lg object-cover border border-[#e5e7eb]" />
+                <button className="btn" onClick={()=>setCfg((p)=>({...p, store:{...p.store, logoUrl:""}}))}>Remover</button>
               </div>
-              {cfg.store.bannerUrl ? (
-                <div className="flex items-center gap-3">
-                  <img
-                    src={cfg.store.bannerUrl}
-                    alt="banner preview"
-                    className="h-24 w-full max-w-sm rounded-lg object-cover border border-[#e5e7eb] bg-white"
-                  />
-                  <button
-                    className="btn"
-                    onClick={()=>setCfg({...cfg, store:{...cfg.store, bannerUrl:""}})}
-                  >
-                    Remover
-                  </button>
-                </div>
-              ) : null}
-            </div>
+            ) : null}
 
-            <label className="text-sm">WhatsApp</label>
+            <label className="text-sm mt-2">Banner (URL ou upload)</label>
+            <div className="grid grid-cols-[1fr_auto] gap-2">
+              <input className="input" value={cfg.store.bannerUrl || ""} onChange={(e)=>setCfg({...cfg, store:{...cfg.store, bannerUrl:e.target.value}})} />
+              <button className="btn" onClick={() => handleUpload((dataUrl)=>setCfg((p)=>({...p, store:{...p.store, bannerUrl:dataUrl}})), { maxW: 1400, maxKB: 220 })}>Upload</button>
+            </div>
+            {cfg.store.bannerUrl ? (
+              <div className="mt-2">
+                <img src={cfg.store.bannerUrl} alt="banner" className="h-40 w-full object-cover rounded-xl border border-[#e5e7eb]" />
+                <button className="btn mt-2" onClick={()=>setCfg((p)=>({...p, store:{...p.store, bannerUrl:""}}))}>Remover</button>
+              </div>
+            ) : null}
+
+            <label className="text-sm mt-2">WhatsApp</label>
             <input className="input" value={cfg.store.whatsapp} onChange={(e)=>setCfg({...cfg, store:{...cfg.store, whatsapp:e.target.value}})} />
+
             <label className="text-sm">Instagram</label>
             <input className="input" value={cfg.store.instagram} onChange={(e)=>setCfg({...cfg, store:{...cfg.store, instagram:e.target.value}})} />
+
             <label className="text-sm">Horário</label>
             <input className="input" value={cfg.store.deliveryHours} onChange={(e)=>setCfg({...cfg, store:{...cfg.store, deliveryHours:e.target.value}})} />
+
             <label className="text-sm">Texto raspadinha</label>
             <textarea className="input h-24" value={cfg.store.raspadinhaCopy} onChange={(e)=>setCfg({...cfg, store:{...cfg.store, raspadinhaCopy:e.target.value}})} />
           </div>
-          <p className="mt-2 text-xs text-[#64748b]">
-            Dica: Upload salva a imagem como <strong>DataURL</strong> no seu navegador (localStorage).
-            Para usar CDN, cole o link no campo de URL.
-          </p>
         </section>
 
         {/* Categorias */}
@@ -419,7 +403,17 @@ export default function Admin() {
                     <label className="text-sm">Preço base</label>
                     <input type="number" className="input" value={p.price} onChange={(e)=>update("products",(arr)=>{arr[idx].price=Number(e.target.value||0)})}/>
                     <label className="text-sm">Imagem (URL/DataURL)</label>
-                    <input className="input" value={p.img||""} onChange={(e)=>update("products",(arr)=>{arr[idx].img=e.target.value})}/>
+                    <div className="grid grid-cols-[1fr_auto] gap-2">
+                      <input className="input" value={p.img||""} onChange={(e)=>update("products",(arr)=>{arr[idx].img=e.target.value})}/>
+                      <button className="btn" onClick={() => handleUpload((dataUrl)=>setCfg((prev)=>{
+                        const draft = jclone(prev);
+                        draft.products[idx].img = dataUrl;
+                        return draft;
+                      }), { maxW: 1000, maxKB: 180 })}>Upload</button>
+                    </div>
+                    {p.img ? (
+                      <img src={p.img} alt="" className="h-28 w-28 rounded-xl object-cover border border-[#e5e7eb]" />
+                    ) : null}
                     <label className="text-sm">Tags (vírgula)</label>
                     <input className="input" value={(p.tags||[]).join(",")} onChange={(e)=>update("products",(arr)=>{arr[idx].tags=e.target.value.split(",").map(s=>s.trim()).filter(Boolean)})}/>
                   </div>
@@ -455,7 +449,7 @@ export default function Admin() {
           <CouponEditor cfg={cfg} setCfg={setCfg} />
           <div className="mt-4 flex gap-2">
             <button onClick={save} className="btn-primary">Salvar</button>
-            <button onClick={()=>{localStorage.removeItem(LS_KEY); location.reload();}} className="btn">Limpar tudo</button>
+            <button onClick={()=>{localStorage.removeItem(LS_KEY); localStorage.removeItem(LS_KEY_CHUNKS); location.reload();}} className="btn">Limpar tudo</button>
           </div>
         </section>
       </main>
@@ -469,6 +463,9 @@ export default function Admin() {
   );
 }
 
+/* ==============================
+   Editor de Cupons
+================================= */
 function CouponEditor({ cfg, setCfg }) {
   const entries = useMemo(() => Object.entries(cfg.coupons || {}), [cfg.coupons]);
 
