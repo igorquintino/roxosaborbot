@@ -14,10 +14,6 @@ const BRAND = {
     accent: "#22C55E",
     lightBg: "#f7f7fb",
     lightFg: "#0f172a",
-    darkBg: "#0b0b0b",
-    darkFg: "#eaeaea",
-    cardDark: "#121212",
-    cardLight: "#ffffff",
   },
 };
 
@@ -27,8 +23,8 @@ const STORE = {
   deliveryHours: "Todos os dias, 14h às 23h",
   raspadinhaCopy:
     "Raspou, achou, ganhou! Digite seu código para validar seu prêmio.",
-  logoUrl: "",
-  bannerUrl: "",
+  logoUrl: "/logo-roxo.png",
+  bannerUrl: "/hero.jpg",
 };
 
 const COUPONS = {
@@ -78,32 +74,6 @@ const PRODUCTS = [
     img: "/prod-acai.jpg",
     tags: ["popular"],
   },
-  {
-    id: "acai-gourmet",
-    category: "acai",
-    name: "Açaí Gourmet",
-    desc: "Com Nutella, Ninho e morangos frescos.",
-    price: 24.9,
-    img: "/prod-acai2.jpg",
-    tags: ["gourmet"],
-  },
-  {
-    id: "combo-duo",
-    category: "combos",
-    name: "Combo DUO (2 x 500 ml)",
-    desc: "2 copos de 500 ml + 2 adicionais cada.",
-    price: 36.9,
-    img: "/prod-acai2.jpg",
-    tags: ["família"],
-  },
-  ...ADDONS.map((a) => ({
-    id: `addon-${a.id}`,
-    category: "adicionais",
-    name: a.name,
-    desc: "Adicional avulso",
-    price: a.price,
-    img: "/addon.jpg",
-  })),
 ];
 
 const currency = (n) =>
@@ -112,6 +82,7 @@ const currency = (n) =>
 export default function RoxoSaborMenu() {
   const router = useRouter();
 
+  // Lê overrides do painel
   const [ov, setOv] = useState(null);
   useEffect(() => {
     try {
@@ -120,15 +91,16 @@ export default function RoxoSaborMenu() {
     } catch {}
   }, []);
 
-  const _BRAND = ov?.brand ?? BRAND;
+  const _BRAND = ov?.brand ? { ...BRAND, ...ov.brand } : BRAND;
   const _STORE = ov?.store ? { ...STORE, ...ov.store } : STORE;
   const _CATEGORIES = ov?.categories ?? CATEGORIES;
   const _ADDONS = ov?.addons ?? ADDONS;
   const _PRODUCTS = ov?.products ?? PRODUCTS;
   const _COUPONS = ov?.coupons ?? COUPONS;
 
+  // Estados
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("acai");
+  const [category, setCategory] = useState(_CATEGORIES[0]?.id ?? "acai");
   const [cart, setCart] = useState([]);
   const [note, setNote] = useState("");
   const [customer, setCustomer] = useState({ name: "", phone: "", address: "" });
@@ -146,7 +118,7 @@ export default function RoxoSaborMenu() {
   const filtered = useMemo(() => {
     return _PRODUCTS.filter(
       (p) =>
-        (category ? p.category === category : true) &&
+        (!category || p.category === category) &&
         (query
           ? (p.name + " " + (p.desc || ""))
               .toLowerCase()
@@ -163,7 +135,7 @@ export default function RoxoSaborMenu() {
   function addToCart(product, { size, addons = [], qty = 1, obs = "" } = {}) {
     const basePrice = size ? size.price : product.price;
     const addonsTotal = addons.reduce((s, a) => s + a.price, 0);
-    const subtotal = (basePrice + addonsTotal) * qty;
+    const s = (basePrice + addonsTotal) * qty;
     setCart((old) => [
       ...old,
       {
@@ -174,7 +146,7 @@ export default function RoxoSaborMenu() {
         addons,
         qty,
         obs,
-        subtotal,
+        subtotal: s,
       },
     ]);
   }
@@ -245,7 +217,7 @@ export default function RoxoSaborMenu() {
         </div>
       </header>
 
-      {/* HERO */}
+      {/* HERO (banner dentro do card) */}
       <section className="max-w-md mx-auto px-4 pt-3">
         <div className="rounded-3xl bg-white shadow-md border border-[color:var(--line)] overflow-hidden">
           <div className="h-32 w-full">
@@ -253,7 +225,7 @@ export default function RoxoSaborMenu() {
               src={_STORE.bannerUrl || "/hero.jpg"}
               className="h-full w-full object-cover"
               alt="Banner"
-              onError={(e) => (e.currentTarget.src = "/hero.jpg")}
+              onError={(e) => (e.currentTarget.src = "/placeholder.png")}
             />
           </div>
           <div className="p-4">
@@ -262,6 +234,7 @@ export default function RoxoSaborMenu() {
                 src={_STORE.logoUrl || "/logo-roxo.png"}
                 className="h-14 w-14 rounded-full border border-[color:var(--line)] object-cover bg-white"
                 alt="Logo"
+                onError={(e) => (e.currentTarget.src = "/placeholder.png")}
               />
               <div className="flex-1">
                 <h1 className="text-lg font-semibold">
@@ -286,12 +259,13 @@ export default function RoxoSaborMenu() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Buscar no cardápio…"
-          className="w-full px-4 py-3 rounded-2xl bg-white border border-[color:var(--line)] outline-none shadow-sm"
+        className="w-full px-4 py-3 rounded-2xl bg-white border border-[color:var(--line)] outline-none shadow-sm"
         />
         <div className="mt-3 flex flex-wrap gap-8">
           {_CATEGORIES.map((c) => (
             <button
               key={c.id}
+              type="button"
               onClick={() => setCategory(c.id)}
               className={`px-0 py-1.5 border-b-2 -mb-px text-sm ${
                 category === c.id
@@ -320,7 +294,7 @@ export default function RoxoSaborMenu() {
         </div>
       </main>
 
-      {/* RASPADINHA (agora logo após os produtos) */}
+      {/* RASPADINHA (após produtos) */}
       <section className="max-w-md mx-auto px-4 pb-6">
         <div className="text-sm rounded-2xl bg-white border border-[color:var(--line)] p-4 shadow-sm">
           <div className="font-semibold">🎟️ Raspadinha Roxo Sabor</div>
@@ -333,6 +307,7 @@ export default function RoxoSaborMenu() {
               className="flex-1 px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
             />
             <button
+              type="button"
               onClick={applyCoupon}
               className="px-3 py-2 rounded-xl bg-[--primary] text-white hover:opacity-90"
             >
@@ -349,7 +324,87 @@ export default function RoxoSaborMenu() {
 
       {/* CARRINHO */}
       <section id="carrinho" className="max-w-md mx-auto px-4 pb-12">
-        {/* ... código do carrinho igual ao anterior ... */}
+        <div className="rounded-2xl overflow-hidden border border-[color:var(--line)] bg-white shadow-lg">
+          <div className="grid md:grid-cols-[2fr_1fr] gap-0">
+            <div className="p-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold tracking-tight">Seu pedido</h2>
+                {cart.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearCart}
+                    className="text-sm text-[color:var(--muted)] hover:opacity-100"
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+
+              {cart.length === 0 ? (
+                <div className="py-8 text-sm text-[color:var(--muted)]">
+                  Seu carrinho está vazio. Adicione itens do cardápio para
+                  finalizar o pedido.
+                </div>
+              ) : (
+                <ul className="mt-3 divide-y divide-[color:var(--line)]">
+                  {cart.map((i) => (
+                    <li key={i.id} className="py-3 flex gap-3 items-start">
+                      <div className="w-10 h-10 rounded-lg bg-[color:var(--chip)] grid place-items-center">
+                        🍧
+                      </div>
+                      <div className="grow">
+                        <div className="font-medium leading-tight">
+                          {i.name}
+                          {i.size ? (
+                            <span className="text-[color:var(--muted)]">
+                              {" "}
+                              ({i.size.label})
+                            </span>
+                          ) : null}
+                          {i.qty ? (
+                            <span className="text-[color:var(--muted)]">
+                              {" "}
+                              × {i.qty}
+                            </span>
+                          ) : null}
+                        </div>
+                        {i.addons?.length ? (
+                          <div className="text-xs text-[color:var(--muted)]">
+                            Adicionais: {i.addons.map((a) => a.name).join(", ")}
+                          </div>
+                        ) : null}
+                        {i.obs ? (
+                          <div className="text-xs text-[color:var(--muted)]">
+                            Obs: {i.obs}
+                          </div>
+                        ) : null}
+                        <div className="text-sm mt-1">{currency(i.subtotal)}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeFromCart(i.id)}
+                        className="px-2 py-1 rounded-lg border border-[color:var(--line)] hover:bg-[color:var(--chip)] text-xs"
+                      >
+                        remover
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <CartSummary
+              subtotal={subtotal}
+              discount={discount}
+              total={total}
+              note={note}
+              setNote={setNote}
+              customer={customer}
+              setCustomer={setCustomer}
+              checkoutMP={checkoutMP}
+            />
+          </div>
+        </div>
       </section>
 
       <footer className="py-10 text-center text-xs text-[color:var(--muted)]">
@@ -359,7 +414,7 @@ export default function RoxoSaborMenu() {
         <div>Feito com ❤️ para vender mais açaí</div>
       </footer>
 
-      {/* THEME FIXO (claro) */}
+      {/* THEME CLARO FIXO */}
       <style jsx global>{`
         :root {
           --primary: ${_BRAND.colors.primary};
@@ -372,19 +427,30 @@ export default function RoxoSaborMenu() {
           --card: #ffffff;
           --chip: #f1f5f9;
         }
-        html, body {
-          background: var(--bg);
-          color: var(--fg);
-        }
+        html, body { background: var(--bg); color: var(--fg); }
       `}</style>
+
+      {/* Bottom Sheet */}
+      <ItemSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        product={sheetProduct}
+        addonsList={_ADDONS}
+        onConfirm={(payload) => {
+          if (!sheetProduct) return;
+          addToCart(sheetProduct, payload);
+          setSheetOpen(false);
+        }}
+      />
     </div>
   );
 }
 
-/* === Componentes auxiliares === */
+/* ==== Componentes auxiliares ==== */
 function ProductRow({ product, onClick, first }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className={`w-full px-4 py-4 text-left block ${
         !first ? "border-t border-[color:var(--line)]" : ""
@@ -404,8 +470,249 @@ function ProductRow({ product, onClick, first }) {
           src={product.img}
           className="h-24 w-24 rounded-2xl object-cover border border-[color:var(--line)]"
           alt={product.name}
+          onError={(e) => (e.currentTarget.src = "/placeholder.png")}
         />
       </div>
     </button>
+  );
+}
+
+function ItemSheet({ open, onClose, product, onConfirm, addonsList }) {
+  const [qty, setQty] = useState(1);
+  const [noteItem, setNoteItem] = useState("");
+  const [selectedSize, setSelectedSize] = useState(null);
+  const [picked, setPicked] = useState(new Set());
+
+  useEffect(() => {
+    if (product?.sizes?.length) setSelectedSize(product.sizes[0]);
+    else setSelectedSize(null);
+    setPicked(new Set());
+    setQty(1);
+    setNoteItem("");
+  }, [product]);
+
+  if (!open || !product) return null;
+
+  const MAX = 3;
+  const base = selectedSize ? selectedSize.price : product.price;
+  const addons = addonsList.filter((a) => picked.has(a.id));
+  const addonsTotal = addons.reduce((s, a) => s + a.price, 0);
+  const price = (base + addonsTotal) * qty;
+
+  function toggle(optId) {
+    setPicked((prev) => {
+      const n = new Set(prev);
+      if (n.has(optId)) n.delete(optId);
+      else {
+        if (n.size >= MAX) n.delete(n.values().next().value);
+        n.add(optId);
+      }
+      return n;
+    });
+  }
+
+  function confirm() {
+    onConfirm({
+      size: selectedSize,
+      addons,
+      qty,
+      obs: noteItem,
+    });
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid grid-rows-[1fr_auto] bg-black/30"
+      onClick={onClose}
+    >
+      <div
+        className="mt-auto rounded-t-3xl bg-white border border-[color:var(--line)] shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="h-40 w-full overflow-hidden rounded-t-3xl">
+          <img
+            src={product.img}
+            className="h-full w-full object-cover"
+            alt=""
+            onError={(e) => (e.currentTarget.src = "/placeholder.png")}
+          />
+        </div>
+
+        <div className="p-4">
+          <h2 className="text-xl font-semibold">{product.name}</h2>
+          <div className="mt-1 text-[color:var(--muted)]">
+            {product.desc || "Monte como preferir"}
+          </div>
+
+          {product.sizes?.length ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {product.sizes.map((s) => (
+                <button
+                  key={s.code}
+                  type="button"
+                  onClick={() => setSelectedSize(s)}
+                  className={`px-3 py-1.5 rounded-xl border text-sm ${
+                    selectedSize?.code === s.code
+                      ? "border-[--primary] bg-[color:var(--chip)]"
+                      : "border-[color:var(--line)] bg-white"
+                  }`}
+                >
+                  {s.label} • {currency(s.price)}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="mt-4">
+            <div className="mb-2 text-base font-semibold">
+              Turbine Seu Açaí{" "}
+              <span className="text-[color:var(--muted)]">
+                • Escolha até 3 opções
+              </span>
+            </div>
+            <div className="grid gap-2">
+              {addonsList.map((o) => {
+                const selected = picked.has(o.id);
+                const disabled = !selected && picked.size >= 3;
+                return (
+                  <button
+                    key={o.id}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => toggle(o.id)}
+                    className={`flex w-full items-center justify-between rounded-xl border p-3 text-left
+                      ${
+                        selected
+                          ? "border-[--primary] bg-[color:var(--chip)]"
+                          : "border-[color:var(--line)] bg-white"
+                      }
+                      ${disabled ? "opacity-50" : ""}`}
+                  >
+                    <span>{o.name}</span>
+                    <span className="text-[color:var(--muted)]">
+                      {currency(o.price)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <div className="mb-2 text-base font-semibold">Alguma observação?</div>
+            <textarea
+              value={noteItem}
+              onChange={(e) => setNoteItem(e.target.value)}
+              maxLength={140}
+              placeholder="Ex: sem granola, pouco leite condensado"
+              className="h-24 w-full rounded-2xl bg-white border border-[color:var(--line)] p-3 outline-none"
+            />
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 flex items-center gap-3 border-t border-[color:var(--line)] bg-white p-4">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setQty((q) => Math.max(1, q - 1))}
+              className="grid h-9 w-9 place-items-center rounded-full border border-[color:var(--line)]"
+            >
+              −
+            </button>
+            <div className="w-6 text-center font-semibold">{qty}</div>
+            <button
+              type="button"
+              onClick={() => setQty((q) => q + 1)}
+              className="grid h-9 w-9 place-items-center rounded-full border border-[color:var(--line)]"
+            >
+              +
+            </button>
+          </div>
+          <button
+            type="button"
+            className="flex-1 rounded-2xl bg-[--primary] py-3 text-center font-semibold text-white hover:opacity-90"
+            onClick={confirm}
+          >
+            Adicionar — {currency(price)}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CartSummary({
+  subtotal,
+  discount,
+  total,
+  note,
+  setNote,
+  customer,
+  setCustomer,
+  checkoutMP,
+}) {
+  return (
+    <div className="p-4 border-t md:border-t-0 md:border-l border-[color:var(--line)] bg-white">
+      <div className="grid gap-3">
+        <div className="grid gap-1 text-sm">
+          <label className="text-[color:var(--muted)]">Observações do pedido</label>
+          <textarea
+            rows={3}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Ex.: Sem granola, pouco leite condensado…"
+            className="w-full px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
+          />
+        </div>
+
+        <div className="grid gap-2 text-sm pt-2">
+          <label className="text-[color:var(--muted)]">Seus dados</label>
+          <input
+            className="px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
+            placeholder="Seu nome"
+            value={customer.name}
+            onChange={(e) => setCustomer({ ...customer, name: e.target.value })}
+          />
+          <input
+            className="px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
+            placeholder="Telefone (WhatsApp)"
+            value={customer.phone}
+            onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
+          />
+          <input
+            className="px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
+            placeholder="Endereço (rua, número e bairro)"
+            value={customer.address}
+            onChange={(e) =>
+              setCustomer({ ...customer, address: e.target.value })
+            }
+          />
+        </div>
+
+        <div className="flex items-center justify-between text-sm pt-2">
+          <span className="text-[color:var(--muted)]">Subtotal</span>
+          <span>{currency(subtotal)}</span>
+        </div>
+        {discount > 0 && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-[color:var(--muted)]">Desconto</span>
+            <span>- {currency(discount)}</span>
+          </div>
+        )}
+        <div className="flex items-center justify-between text-base font-semibold border-t border-[color:var(--line)] pt-2">
+          <span>Total</span>
+          <span>{currency(total)}</span>
+        </div>
+
+        <button
+          type="button"
+          onClick={checkoutMP}
+          className="mt-2 px-4 py-3 rounded-2xl text-center font-medium bg-[--primary] text-white hover:opacity-90 disabled:opacity-50"
+          disabled={subtotal <= 0}
+        >
+          Pagar com PIX ou Cartão (Mercado Pago)
+        </button>
+      </div>
+    </div>
   );
 }
