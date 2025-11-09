@@ -470,7 +470,7 @@ export default function RoxoSaborMenu() {
         html,
         body {
           background: var(--bg);
-          color: var(--fg);
+          color: var(--bg);
         }
       `}</style>
 
