@@ -169,14 +169,12 @@ function SmartImg({ src, alt = "", className = "", style = {} }) {
 export default function RoxoSaborMenu() {
   const router = useRouter();
 
-  // Lê overrides salvos (inclusive em chunks)
   const [ov, setOv] = useState(null);
   useEffect(() => {
     const stored = loadBigJSON(LS_KEY);
     if (stored) setOv(stored);
   }, []);
 
-  // Mescla defaults com o que veio do admin
   const _BRAND = { ...BRAND, ...(ov?.brand || {}) };
   const _STORE = { ...STORE, ...(ov?.store || {}) };
   const _CATEGORIES = ov?.categories ?? CATEGORIES;
@@ -184,17 +182,15 @@ export default function RoxoSaborMenu() {
   const _PRODUCTS = ov?.products ?? PRODUCTS;
   const _COUPONS = ov?.coupons ?? COUPONS;
 
-  // estados
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("acai");
   const [cart, setCart] = useState([]);
   const [note, setNote] = useState("");
 
-  // ENDEREÇO SEPARADO
   const [customer, setCustomer] = useState({
     name: "",
     phone: "",
-    neighborhood: "", // bairro
+    neighborhood: "",
     street: "",
     number: "",
     complement: "",
@@ -202,10 +198,10 @@ export default function RoxoSaborMenu() {
 
   const [couponCode, setCouponCode] = useState("");
   const [couponInfo, setCouponInfo] = useState(null);
+
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetProduct, setSheetProduct] = useState(null);
 
-  // Info do frete calculado automaticamente
   const [deliveryInfo, setDeliveryInfo] = useState({
     distanciaKm: null,
     price: 0,
@@ -219,23 +215,24 @@ export default function RoxoSaborMenu() {
     }
   }, [router.query.pago]);
 
-  const filtered = useMemo(() => {
-    return _PRODUCTS.filter(
-      (p) =>
-        (category ? p.category === category : true) &&
-        (query
-          ? (p.name + " " + (p.desc || ""))
-              .toLowerCase()
-              .includes(query.toLowerCase())
-          : true)
-    );
-  }, [_PRODUCTS, category, query]);
+  const filtered = useMemo(
+    () =>
+      _PRODUCTS.filter(
+        (p) =>
+          (category ? p.category === category : true) &&
+          (query
+            ? (p.name + " " + (p.desc || ""))
+                .toLowerCase()
+                .includes(query.toLowerCase())
+            : true)
+      ),
+    [_PRODUCTS, category, query]
+  );
 
   const subtotal = cart.reduce((s, i) => s + i.subtotal, 0);
   const discount =
     couponInfo?.type === "percent" ? (subtotal * couponInfo.value) / 100 : 0;
 
-  // total inclui frete
   const total = Math.max(0, subtotal - discount + (deliveryInfo.price || 0));
 
   function addToCart(product, { size, addons = [], qty = 1, obs = "" } = {}) {
@@ -274,7 +271,7 @@ export default function RoxoSaborMenu() {
     setCouponCode("");
   }
 
-  // ✅ Cupom: desconto percentual + frete grátis
+  // cupom (incluindo frete grátis)
   function applyCoupon() {
     const code = couponCode.trim().toUpperCase();
     const found = _COUPONS[code];
@@ -286,7 +283,6 @@ export default function RoxoSaborMenu() {
 
     setCouponInfo({ ...found, code });
 
-    // Se for frete grátis, zera o frete desta compra
     if (code === "FRETEGRATIS") {
       setDeliveryInfo((prev) => ({
         ...prev,
@@ -295,7 +291,6 @@ export default function RoxoSaborMenu() {
     }
   }
 
-  // Calcula frete via API (OpenStreetMap / backend)
   async function calcularFrete() {
     try {
       if (!customer.neighborhood || !customer.street || !customer.number) {
@@ -315,9 +310,7 @@ export default function RoxoSaborMenu() {
 
       const data = await resp.json();
 
-      if (!resp.ok) {
-        throw new Error(data.error || "Erro ao calcular frete");
-      }
+      if (!resp.ok) throw new Error(data.error || "Erro ao calcular frete");
 
       setDeliveryInfo({
         distanciaKm: Number(data.distanciaKm),
@@ -350,7 +343,6 @@ export default function RoxoSaborMenu() {
         return;
       }
 
-      // obriga calcular frete antes de pagar
       if (deliveryInfo.distanciaKm == null) {
         alert("Calcule o frete automaticamente antes de finalizar o pedido.");
         return;
@@ -365,11 +357,11 @@ export default function RoxoSaborMenu() {
         subtotal: Number(subtotal.toFixed(2)),
         discount: Number(discount.toFixed(2)),
         deliveryFee: Number(deliveryInfo.price.toFixed(2)),
-        total: Number(total.toFixed(2)), // já com frete e desconto
+        total: Number(total.toFixed(2)),
         note,
         customer: {
           ...customer,
-          address: fullAddress, // também enviamos formatado
+          address: fullAddress,
         },
         couponCode: couponInfo?.code || "",
       };
@@ -413,7 +405,7 @@ export default function RoxoSaborMenu() {
         </div>
       </header>
 
-      {/* HERO dentro do card */}
+      {/* HERO */}
       <section className="max-w-md mx-auto px-4 pt-4">
         <div className="rounded-3xl bg-white p-0 shadow-md border border-[color:var(--line)] overflow-hidden">
           <div className="h-36 w-full">
@@ -490,35 +482,6 @@ export default function RoxoSaborMenu() {
         </div>
       </main>
 
-      {/* RASPADINHA (depois dos produtos) */}
-      <section className="max-w-md mx-auto px-4 pb-6">
-        <div className="text-sm rounded-2xl bg-white border border-[color:var(--line)] p-4 shadow-sm">
-          <div className="font-semibold flex items-center gap-2">
-            <span>🎟️</span> Raspadinha Roxo Sabor
-          </div>
-          <p className="text-[color:var(--muted)] mt-1">{_STORE.raspadinhaCopy}</p>
-          <div className="mt-3 flex gap-2">
-            <input
-              value={couponCode}
-              onChange={(e) => setCouponCode(e.target.value)}
-              placeholder="Digite seu código"
-              className="flex-1 px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
-            />
-            <button
-              onClick={applyCoupon}
-              className="px-3 py-2 rounded-xl bg-[--primary] text-white hover:opacity-90"
-            >
-              Validar
-            </button>
-          </div>
-          {couponInfo && (
-            <div className="mt-2 text-xs px-3 py-2 rounded-lg border border-[color:var(--line)] bg-[color:var(--chip)]">
-              ✅ {couponInfo.label}
-            </div>
-          )}
-        </div>
-      </section>
-
       {/* CARRINHO */}
       <section id="carrinho" className="max-w-md mx-auto px-4 pb-12">
         <div className="rounded-2xl overflow-hidden border border-[color:var(--line)] bg-white shadow-lg">
@@ -551,29 +514,29 @@ export default function RoxoSaborMenu() {
                       <div className="grow">
                         <div className="font-medium leading-tight">
                           {i.name}
-                          {i.size ? (
+                          {i.size && (
                             <span className="text-[color:var(--muted)]">
                               {" "}
                               ({i.size.label})
                             </span>
-                          ) : null}
-                          {i.qty ? (
+                          )}
+                          {i.qty && (
                             <span className="text-[color:var(--muted)]">
                               {" "}
                               × {i.qty}
                             </span>
-                          ) : null}
+                          )}
                         </div>
-                        {i.addons?.length ? (
+                        {i.addons?.length > 0 && (
                           <div className="text-xs text-[color:var(--muted)]">
                             Adicionais: {i.addons.map((a) => a.name).join(", ")}
                           </div>
-                        ) : null}
-                        {i.obs ? (
+                        )}
+                        {i.obs && (
                           <div className="text-xs text-[color:var(--muted)]">
                             Obs: {i.obs}
                           </div>
-                        ) : null}
+                        )}
                         <div className="text-sm mt-1">{currency(i.subtotal)}</div>
                       </div>
                       <button
@@ -599,6 +562,11 @@ export default function RoxoSaborMenu() {
               checkoutMP={checkoutMP}
               deliveryInfo={deliveryInfo}
               calcularFrete={calcularFrete}
+              couponCode={couponCode}
+              setCouponCode={setCouponCode}
+              couponInfo={couponInfo}
+              applyCoupon={applyCoupon}
+              raspadinhaCopy={_STORE.raspadinhaCopy}
             />
           </div>
         </div>
@@ -612,7 +580,6 @@ export default function RoxoSaborMenu() {
         <div>Feito com ❤️ para vender mais açaí</div>
       </footer>
 
-      {/* THEME claro */}
       <style jsx global>{`
         :root {
           --primary: ${BRAND.colors.primary};
@@ -632,7 +599,6 @@ export default function RoxoSaborMenu() {
         }
       `}</style>
 
-      {/* Bottom Sheet do item */}
       <ItemSheet
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
@@ -834,6 +800,11 @@ function CartSummary({
   checkoutMP,
   deliveryInfo,
   calcularFrete,
+  couponCode,
+  setCouponCode,
+  couponInfo,
+  applyCoupon,
+  raspadinhaCopy,
 }) {
   return (
     <div className="p-4 border-t md:border-t-0 md:border-l border-[color:var(--line)] bg-white">
@@ -866,7 +837,7 @@ function CartSummary({
           />
         </div>
 
-        {/* Endereço separado */}
+        {/* Endereço */}
         <div className="grid gap-2 text-sm">
           <label className="text-[color:var(--muted)]">Endereço para entrega</label>
           <input
@@ -901,7 +872,7 @@ function CartSummary({
           </div>
         </div>
 
-        {/* Frete automático */}
+        {/* Frete */}
         <div className="grid gap-2 text-sm">
           <button
             type="button"
@@ -922,6 +893,34 @@ function CartSummary({
           )}
         </div>
 
+        {/* 🔽 AQUI: Raspadinha / cupom entre frete e resumo */}
+        <div className="text-sm rounded-2xl bg-[color:var(--chip)] border border-[color:var(--line)] p-3">
+          <div className="font-semibold flex items-center gap-2">
+            <span>🎟️</span> Raspadinha Roxo Sabor
+          </div>
+          <p className="text-[color:var(--muted)] mt-1">{raspadinhaCopy}</p>
+          <div className="mt-2 flex gap-2">
+            <input
+              value={couponCode}
+              onChange={(e) => setCouponCode(e.target.value)}
+              placeholder="Digite seu código"
+              className="flex-1 px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
+            />
+            <button
+              onClick={applyCoupon}
+              className="px-3 py-2 rounded-xl bg-[--primary] text-white hover:opacity-90"
+            >
+              Validar
+            </button>
+          </div>
+          {couponInfo && (
+            <div className="mt-2 text-xs px-3 py-2 rounded-lg border border-[color:var(--line)] bg-white">
+              ✅ {couponInfo.label}
+            </div>
+          )}
+        </div>
+
+        {/* Resumo de valores */}
         <div className="flex items-center justify-between text-sm pt-2">
           <span className="text-[color:var(--muted)]">Subtotal</span>
           <span>{currency(subtotal)}</span>
@@ -943,6 +942,7 @@ function CartSummary({
           <span>{currency(total)}</span>
         </div>
 
+        {/* Botão de pagamento */}
         <button
           onClick={checkoutMP}
           className="mt-2 px-4 py-3 rounded-2xl text-center font-medium bg-[--primary] text-white hover:opacity-90 disabled:opacity-50"
@@ -954,4 +954,3 @@ function CartSummary({
     </div>
   );
 }
-
