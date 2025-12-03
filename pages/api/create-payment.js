@@ -1,7 +1,9 @@
 import { MercadoPagoConfig, Preference } from "mercadopago";
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).send("Method not allowed");
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
 
   try {
     const {
@@ -9,10 +11,22 @@ export default async function handler(req, res) {
       subtotal = 0,
       discount = 0,
       deliveryFee = 0,
-      total = 0,
       note = "",
       customer = {},
+      couponCode = "", // opcional, se quiser mandar do front
     } = req.body || {};
+
+    // Normaliza os valores numéricos
+    const safeSubtotal = Number(subtotal) || 0;
+    const safeDiscount = Number(discount) || 0;
+    const safeDeliveryFee = Number(deliveryFee) || 0;
+
+    // 🔥 TOTAL FINAL = produtos - desconto + frete
+    // (se frete grátis, o front deve mandar deliveryFee = 0)
+    const finalTotal = Math.max(
+      0,
+      safeSubtotal - safeDiscount + safeDeliveryFee
+    );
 
     const client = new MercadoPagoConfig({
       accessToken: process.env.MP_ACCESS_TOKEN,
@@ -20,13 +34,13 @@ export default async function handler(req, res) {
 
     const preference = new Preference(client);
 
-    // Envia apenas o valor total (produtos + frete)
+    // Enviamos UM item com o valor total (produtos + frete)
     const items = [
       {
         id: "pedido-roxo-sabor",
         title: "Pedido Roxo Sabor",
         quantity: 1,
-        unit_price: Number(Number(total).toFixed(2)),
+        unit_price: Number(finalTotal.toFixed(2)),
         currency_id: "BRL",
       },
     ];
@@ -44,13 +58,13 @@ export default async function handler(req, res) {
           address: { street_name: customer?.address || "" },
         },
 
-        // 🔥 DESATIVAMOS O PIX AQUI
+        // 🔒 Só cartão e saldo na conta MP (sem PIX / boleto / etc)
         payment_methods: {
           excluded_payment_types: [
-            { id: "ticket" }, // remove boleto (se quiser)
-            { id: "atm" },    // remove transferência
-            { id: "pix" }     // 🔥 remove PIX
-          ]
+            { id: "ticket" }, // boleto
+            { id: "atm" },    // transferência
+            { id: "pix" },    // pix
+          ],
         },
 
         binary_mode: true,
@@ -69,15 +83,16 @@ export default async function handler(req, res) {
 
         metadata: {
           cart,
-          subtotal,
-          discount,
-          deliveryFee,
-          total,
+          subtotal: safeSubtotal,
+          discount: safeDiscount,
+          deliveryFee: safeDeliveryFee,
+          total: finalTotal,
           note,
           loja: "Roxo Sabor",
           customer_name: customer?.name || "",
           customer_phone: String(customer?.phone || ""),
           full_address: customer?.address || "",
+          couponCode: couponCode || null,
         },
 
         statement_descriptor: "RSABOR",
