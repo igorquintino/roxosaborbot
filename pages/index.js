@@ -205,7 +205,7 @@ export default function RoxoSaborMenu() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetProduct, setSheetProduct] = useState(null);
 
-  // NOVO: info do frete calculado automaticamente
+  // Info do frete calculado automaticamente
   const [deliveryInfo, setDeliveryInfo] = useState({
     distanciaKm: null,
     price: 0,
@@ -279,7 +279,7 @@ export default function RoxoSaborMenu() {
     else setCouponInfo({ type: "msg", label: "Código inválido ou já utilizado." });
   }
 
-  // NOVO: calcula frete via API gratuita (OpenStreetMap)
+  // Calcula frete via API (OpenStreetMap / backend)
   async function calcularFrete() {
     try {
       if (!customer.neighborhood || !customer.street || !customer.number) {
@@ -304,8 +304,8 @@ export default function RoxoSaborMenu() {
       }
 
       setDeliveryInfo({
-        distanciaKm: data.distanciaKm,
-        price: data.price,
+        distanciaKm: Number(data.distanciaKm),
+        price: Number(data.price),
         loading: false,
         error: "",
       });
@@ -334,13 +334,9 @@ export default function RoxoSaborMenu() {
         return;
       }
 
-      if (!deliveryInfo.price) {
-        const ok = confirm(
-          "Você ainda não calculou o frete automaticamente. Deseja calcular agora?"
-        );
-        if (ok) {
-          await calcularFrete();
-        }
+      // obriga calcular frete antes de pagar
+      if (deliveryInfo.distanciaKm == null) {
+        alert("Calcule o frete automaticamente antes de finalizar o pedido.");
         return;
       }
 
