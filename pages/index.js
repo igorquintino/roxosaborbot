@@ -63,21 +63,21 @@ const CATEGORIES = [
 ];
 
 const ADDONS = [
-  { id: "leiteNinho", name: "Leite Ninho", price: 1.0 },
-  { id: "nutella", name: "Nutella", price: 4.5 },
-  { id: "morango", name: "Morango", price: 3.0 },
-  { id: "banana", name: "Banana", price: 2.5 },
-  { id: "granola", name: "Granola", price: 2.0 },
-  { id: "leiteCondensado", name: "Leite Condensado", price: 2.5 },
+  { id: "leiteNinho", name: "Leite Ninho", price: 0 },
+  { id: "nutella", name: "Nutella", price: 0 },
+  { id: "morango", name: "Morango", price: 0 },
+  { id: "banana", name: "Banana", price: 0 },
+  { id: "granola", name: "Granola", price: 0 },
+  { id: "leiteCondensado", name: "Leite Condensado", price: 0 },
 ];
 
 const PRODUCTS = [
   {
     id: "promo-999",
     category: "promos",
-    name: "PROMO • 330 ml por R$ 9,99",
+    name: "PROMO • 330 ml",
     desc: "Açaí 330 ml com 1 adicional simples.",
-    price: 9.99,
+    price: 1,
     img: "/prod-acai.jpg",
     tags: ["promo", "popular"],
   },
