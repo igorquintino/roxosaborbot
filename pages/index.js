@@ -205,6 +205,14 @@ export default function RoxoSaborMenu() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetProduct, setSheetProduct] = useState(null);
 
+  // NOVO: info do frete calculado automaticamente
+  const [deliveryInfo, setDeliveryInfo] = useState({
+    distanciaKm: null,
+    price: 0,
+    loading: false,
+    error: "",
+  });
+
   useEffect(() => {
     if (router.query.pago === "sucesso") {
       alert("✅ Pedido confirmado! Você receberá o resumo no Telegram.");
@@ -226,7 +234,12 @@ export default function RoxoSaborMenu() {
   const subtotal = cart.reduce((s, i) => s + i.subtotal, 0);
   const discount =
     couponInfo?.type === "percent" ? (subtotal * couponInfo.value) / 100 : 0;
-  const total = Math.max(0, subtotal - discount);
+
+  // total agora inclui frete
+  const total = Math.max(
+    0,
+    subtotal - discount + (deliveryInfo.price || 0)
+  );
 
   function addToCart(product, { size, addons = [], qty = 1, obs = "" } = {}) {
     const basePrice = size ? size.price : product.price;
@@ -252,12 +265,60 @@ export default function RoxoSaborMenu() {
   function clearCart() {
     setCart([]);
     setNote("");
+    setDeliveryInfo({
+      distanciaKm: null,
+      price: 0,
+      loading: false,
+      error: "",
+    });
   }
   function applyCoupon() {
     const code = couponCode.trim().toUpperCase();
     const found = _COUPONS[code];
     if (found) setCouponInfo({ ...found, code });
     else setCouponInfo({ type: "msg", label: "Código inválido ou já utilizado." });
+  }
+
+  // NOVO: calcula frete via API gratuita (OpenStreetMap)
+  async function calcularFrete() {
+    try {
+      if (!customer.neighborhood || !customer.street || !customer.number) {
+        alert("Preencha bairro, rua e número para calcular o frete.");
+        return;
+      }
+
+      const fullAddress = `${customer.street}, ${customer.number} - ${customer.neighborhood}`;
+
+      setDeliveryInfo((old) => ({ ...old, loading: true, error: "" }));
+
+      const resp = await fetch("/api/calculate-distance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: fullAddress }),
+      });
+
+      const data = await resp.json();
+
+      if (!resp.ok) {
+        throw new Error(data.error || "Erro ao calcular frete");
+      }
+
+      setDeliveryInfo({
+        distanciaKm: data.distanciaKm,
+        price: data.price,
+        loading: false,
+        error: "",
+      });
+    } catch (err) {
+      console.error(err);
+      setDeliveryInfo({
+        distanciaKm: null,
+        price: 0,
+        loading: false,
+        error: "Não foi possível calcular o frete.",
+      });
+      alert("Não foi possível calcular o frete. Confira o endereço.");
+    }
   }
 
   async function checkoutMP() {
@@ -273,13 +334,26 @@ export default function RoxoSaborMenu() {
         return;
       }
 
+      if (!deliveryInfo.price) {
+        const ok = confirm(
+          "Você ainda não calculou o frete automaticamente. Deseja calcular agora?"
+        );
+        if (ok) {
+          await calcularFrete();
+        }
+        return;
+      }
+
       const fullAddress = `${customer.street}, ${customer.number} - ${customer.neighborhood}${
         customer.complement ? ` (${customer.complement})` : ""
       }`;
 
       const body = {
         cart,
-        total: Number(subtotal.toFixed(2)),
+        subtotal: Number(subtotal.toFixed(2)),
+        discount: Number(discount.toFixed(2)),
+        deliveryFee: Number(deliveryInfo.price.toFixed(2)),
+        total: Number(total.toFixed(2)), // já com frete e desconto
         note,
         customer: {
           ...customer,
@@ -510,6 +584,8 @@ export default function RoxoSaborMenu() {
               customer={customer}
               setCustomer={setCustomer}
               checkoutMP={checkoutMP}
+              deliveryInfo={deliveryInfo}
+              calcularFrete={calcularFrete}
             />
           </div>
         </div>
@@ -743,6 +819,8 @@ function CartSummary({
   customer,
   setCustomer,
   checkoutMP,
+  deliveryInfo,
+  calcularFrete,
 }) {
   return (
     <div className="p-4 border-t md:border-t-0 md:border-l border-[color:var(--line)] bg-white">
@@ -810,6 +888,27 @@ function CartSummary({
           </div>
         </div>
 
+        {/* Frete automático */}
+        <div className="grid gap-2 text-sm">
+          <button
+            type="button"
+            onClick={calcularFrete}
+            className="px-3 py-2 rounded-xl bg-[--primary] text-white text-sm hover:opacity-90 disabled:opacity-60"
+            disabled={deliveryInfo.loading}
+          >
+            {deliveryInfo.loading ? "Calculando frete..." : "Calcular frete automaticamente"}
+          </button>
+          {deliveryInfo.distanciaKm != null && (
+            <div className="text-xs text-[color:var(--muted)]">
+              Distância estimada: {deliveryInfo.distanciaKm} km • Frete{" "}
+              {currency(deliveryInfo.price)}
+            </div>
+          )}
+          {deliveryInfo.error && (
+            <div className="text-xs text-red-500">{deliveryInfo.error}</div>
+          )}
+        </div>
+
         <div className="flex items-center justify-between text-sm pt-2">
           <span className="text-[color:var(--muted)]">Subtotal</span>
           <span>{currency(subtotal)}</span>
@@ -818,6 +917,12 @@ function CartSummary({
           <div className="flex items-center justify-between text-sm">
             <span className="text-[color:var(--muted)]">Desconto</span>
             <span>- {currency(discount)}</span>
+          </div>
+        )}
+        {deliveryInfo.price > 0 && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-[color:var(--muted)]">Frete</span>
+            <span>{currency(deliveryInfo.price)}</span>
           </div>
         )}
         <div className="flex items-center justify-between text-base font-semibold border-t border-[color:var(--line)] pt-2">
