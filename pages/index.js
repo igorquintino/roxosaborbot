@@ -50,7 +50,7 @@ const STORE = {
 
 const COUPONS = {
   ROXO10: { type: "percent", value: 10, label: "10% de desconto aplicado" },
-  FRETEGRATIS: { type: "msg", label: "Frete grátis na próxima compra!" },
+  FRETEGRATIS: { type: "msg", label: "Frete grátis nesta compra!" },
   ADICIONAL: { type: "msg", label: "Um adicional grátis no próximo açaí!" },
 };
 
@@ -235,11 +235,8 @@ export default function RoxoSaborMenu() {
   const discount =
     couponInfo?.type === "percent" ? (subtotal * couponInfo.value) / 100 : 0;
 
-  // total agora inclui frete
-  const total = Math.max(
-    0,
-    subtotal - discount + (deliveryInfo.price || 0)
-  );
+  // total inclui frete
+  const total = Math.max(0, subtotal - discount + (deliveryInfo.price || 0));
 
   function addToCart(product, { size, addons = [], qty = 1, obs = "" } = {}) {
     const basePrice = size ? size.price : product.price;
@@ -259,9 +256,11 @@ export default function RoxoSaborMenu() {
       },
     ]);
   }
+
   function removeFromCart(id) {
     setCart((old) => old.filter((i) => i.id !== id));
   }
+
   function clearCart() {
     setCart([]);
     setNote("");
@@ -271,12 +270,29 @@ export default function RoxoSaborMenu() {
       loading: false,
       error: "",
     });
+    setCouponInfo(null);
+    setCouponCode("");
   }
+
+  // ✅ Cupom: desconto percentual + frete grátis
   function applyCoupon() {
     const code = couponCode.trim().toUpperCase();
     const found = _COUPONS[code];
-    if (found) setCouponInfo({ ...found, code });
-    else setCouponInfo({ type: "msg", label: "Código inválido ou já utilizado." });
+
+    if (!found) {
+      setCouponInfo({ type: "msg", label: "Código inválido ou já utilizado." });
+      return;
+    }
+
+    setCouponInfo({ ...found, code });
+
+    // Se for frete grátis, zera o frete desta compra
+    if (code === "FRETEGRATIS") {
+      setDeliveryInfo((prev) => ({
+        ...prev,
+        price: 0,
+      }));
+    }
   }
 
   // Calcula frete via API (OpenStreetMap / backend)
@@ -355,6 +371,7 @@ export default function RoxoSaborMenu() {
           ...customer,
           address: fullAddress, // também enviamos formatado
         },
+        couponCode: couponInfo?.code || "",
       };
 
       const r = await fetch("/api/create-payment", {
@@ -931,9 +948,10 @@ function CartSummary({
           className="mt-2 px-4 py-3 rounded-2xl text-center font-medium bg-[--primary] text-white hover:opacity-90 disabled:opacity-50"
           disabled={subtotal <= 0}
         >
-          Pagar com PIX ou Cartão (Mercado Pago)
+          Pagar com Cartão ou Saldo (Mercado Pago)
         </button>
       </div>
     </div>
   );
 }
+
