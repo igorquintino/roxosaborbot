@@ -2,8 +2,8 @@
 
 // COORDENADAS FIXAS DA ROXO SABOR (PEGA NO GOOGLE MAPS)
 // Ex.: clique no seu ponto → copia "-20.xxxx, -43.xxxx"
-const ORIGEM_LAT = -20.000000;  // <-- TROCAR
-const ORIGEM_LON = -43.000000;  // <-- TROCAR
+const ORIGEM_LAT = -20.665541149082127;  // <-- TROCAR
+const ORIGEM_LON = -43.804545918264765;  // <-- TROCAR
 
 // Haversine: distância em km entre dois pontos (lat, lon)
 function distanciaEmKm(lat1, lon1, lat2, lon2) {
