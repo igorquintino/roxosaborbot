@@ -20,7 +20,7 @@ export default async function handler(req, res) {
 
     const preference = new Preference(client);
 
-    // 🟣 ENVIA UM ÚNICO ITEM COM O VALOR FINAL (total)
+    // Envia apenas o valor total (produtos + frete)
     const items = [
       {
         id: "pedido-roxo-sabor",
@@ -44,6 +44,15 @@ export default async function handler(req, res) {
           address: { street_name: customer?.address || "" },
         },
 
+        // 🔥 DESATIVAMOS O PIX AQUI
+        payment_methods: {
+          excluded_payment_types: [
+            { id: "ticket" }, // remove boleto (se quiser)
+            { id: "atm" },    // remove transferência
+            { id: "pix" }     // 🔥 remove PIX
+          ]
+        },
+
         binary_mode: true,
 
         back_urls: {
@@ -58,13 +67,12 @@ export default async function handler(req, res) {
 
         external_reference: `pedido_${Date.now()}`,
 
-        // 🔥 AQUI GUARDAMOS TUDO PARA O WEBHOOK/PAINEL
         metadata: {
           cart,
-          subtotal: Number(subtotal),
-          discount: Number(discount),
-          deliveryFee: Number(deliveryFee),
-          total: Number(total),
+          subtotal,
+          discount,
+          deliveryFee,
+          total,
           note,
           loja: "Roxo Sabor",
           customer_name: customer?.name || "",
@@ -72,7 +80,7 @@ export default async function handler(req, res) {
           full_address: customer?.address || "",
         },
 
-        statement_descriptor: "ROXO SABOR",
+        statement_descriptor: "RSABOR",
       },
     });
 
