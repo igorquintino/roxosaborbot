@@ -424,12 +424,12 @@ export default function RoxoSaborMenu() {
               />
               <div className="flex-1">
                 <h1 className="text-lg font-semibold">
-                  {_BRAND.name} - Bairro Progresso
+                  {_BRAND.name} - 
                 </h1>
                 <div className="mt-0.5 text-sm text-[color:var(--muted)]">
                   Entrega rastreável • 2.7 km • Min R$ 20,00
                 </div>
-                <div className="mt-1 text-sm">⭐ 5,0 (4 avaliações)</div>
+                <div className="mt-1 text-sm">⭐ 4,9 (23 avaliações)</div>
               </div>
             </div>
 
