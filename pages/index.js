@@ -40,8 +40,8 @@ const BRAND = {
 
 const STORE = {
   whatsapp: "+55 31 993006358",
-  instagram: "@roxosaboroficial",
-  deliveryHours: "Todos os dias, 14h às 23h",
+  instagram: "@roxo._sabor",
+  deliveryHours: "Todos os dias, 09hrs às 21hrs",
   bannerUrl: "/hero.jpg",
   logoUrl: "/logo-roxo.png",
   raspadinhaCopy:
@@ -59,7 +59,6 @@ const CATEGORIES = [
   { id: "acai", name: "Açaí no Copo" },
   { id: "combos", name: "Combos" },
   { id: "adicionais", name: "Adicionais" },
-  { id: "bebidas", name: "Bebidas" },
 ];
 
 const ADDONS = [
