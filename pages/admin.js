@@ -109,9 +109,8 @@ const DEFAULT_CFG = {
     },
   },
   store: {
-    whatsapp: "+55 31 993006358",
-    instagram: "@roxosaboroficial",
-    deliveryHours: "Todos os dias, 14h às 23h",
+    instagram: "@roxo._sabor",
+    deliveryHours: "Todos os dias, 09h às 21h",
     raspadinhaCopy:
       "Raspou, achou, ganhou! Digite seu código para validar seu prêmio.",
     logoUrl: "",   // <-- novo
@@ -122,15 +121,14 @@ const DEFAULT_CFG = {
     { id: "acai", name: "Açaí no Copo" },
     { id: "combos", name: "Combos" },
     { id: "adicionais", name: "Adicionais" },
-    { id: "bebidas", name: "Bebidas" },
   ],
   addons: [
-    { id: "leiteNinho", name: "Leite Ninho", price: 1.0 },
-    { id: "nutella", name: "Nutella", price: 4.5 },
-    { id: "morango", name: "Morango", price: 3.0 },
-    { id: "banana", name: "Banana", price: 2.5 },
-    { id: "granola", name: "Granola", price: 2.0 },
-    { id: "leiteCondensado", name: "Leite Condensado", price: 2.5 },
+    { id: "leiteNinho", name: "Leite Ninho", price: 0.0 },
+    { id: "nutella", name: "Nutella", price: 0.0 },
+    { id: "morango", name: "Morango", price: 0.0 },
+    { id: "banana", name: "Banana", price: 0.0 },
+    { id: "granola", name: "Granola", price: 0.0 },
+    { id: "leiteCondensado", name: "Leite Condensado", price: 0.0 },
   ],
   products: [
     {
@@ -138,7 +136,7 @@ const DEFAULT_CFG = {
       category: "promos",
       name: "PROMO • 330 ml por R$ 9,99",
       desc: "Açaí 330 ml com 1 adicional simples.",
-      price: 9.99,
+      price: 0.99,
       img: "/prod-acai.jpg",
       tags: ["promo", "popular"],
       sizes: [],
@@ -154,7 +152,7 @@ const DEFAULT_CFG = {
         { code: "500", label: "500 ml", price: 25.99 },
         { code: "700", label: "700 ml", price: 32.99 },
       ],
-      img: "/prod-acai.jpg",
+      img: "/prod-acai2.jpg",
       tags: ["popular"],
     },
   ],
