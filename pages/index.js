@@ -18,11 +18,10 @@ const BRAND = {
 };
 
 const STORE = {
-  whatsapp: "+55 31 993006358",
   instagram: "@roxo._sabor",
   deliveryHours: "Todos os dias, 09hrs às 21hrs",
-  bannerUrl: "/hero.jpg",
-  logoUrl: "/logo-roxo.png",
+  bannerUrl: "/banner.jpg",
+  logoUrl: "/logoroxo.png",
   raspadinhaCopy:
     "Raspou, achou, ganhou! Digite seu código para validar seu prêmio.",
 };
@@ -56,7 +55,7 @@ const PRODUCTS = [
     name: "PROMO • 330 ml",
     desc: "Açaí 330 ml com 1 adicional simples.",
     price: 1,
-    img: "/prod-acai.jpg",
+    img: "/acai330.jpg",
     tags: ["promo", "popular"],
   },
   {
