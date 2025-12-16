@@ -2,28 +2,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/router";
 
-const LS_KEY = "ilumo_cfg_v2";
-const LS_KEY_CHUNKS = LS_KEY + ":chunks";
-
-/* Loader compatível com o Admin (chunks) */
-function loadBigJSON(key) {
-  try {
-    const chunkCount = Number(localStorage.getItem(LS_KEY_CHUNKS) || 0);
-    if (!chunkCount) {
-      const raw = localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : null;
-    }
-    let str = "";
-    for (let i = 0; i < chunkCount; i++) {
-      str += localStorage.getItem(`${key}:${i}`) || "";
-    }
-    return str ? JSON.parse(str) : null;
-  } catch {
-    return null;
-  }
-}
-
-/* ===== DEFAULTS ===== */
+/* ===== DEFAULTS (ÚNICA fonte de verdade) ===== */
 const BRAND = {
   name: "Roxo Sabor",
   logoText: "ROXO SABOR",
@@ -168,18 +147,13 @@ function SmartImg({ src, alt = "", className = "", style = {} }) {
 export default function RoxoSaborMenu() {
   const router = useRouter();
 
-  const [ov, setOv] = useState(null);
-  useEffect(() => {
-    const stored = loadBigJSON(LS_KEY);
-    if (stored) setOv(stored);
-  }, []);
-
-  const _BRAND = { ...BRAND, ...(ov?.brand || {}) };
-  const _STORE = { ...STORE, ...(ov?.store || {}) };
-  const _CATEGORIES = ov?.categories ?? CATEGORIES;
-  const _ADDONS = ov?.addons ?? ADDONS;
-  const _PRODUCTS = ov?.products ?? PRODUCTS;
-  const _COUPONS = ov?.coupons ?? COUPONS;
+  // ✅ SEMPRE usa os dados do código (sem Admin/localStorage)
+  const _BRAND = BRAND;
+  const _STORE = STORE;
+  const _CATEGORIES = CATEGORIES;
+  const _ADDONS = ADDONS;
+  const _PRODUCTS = PRODUCTS;
+  const _COUPONS = COUPONS;
 
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("acai");
@@ -237,7 +211,8 @@ export default function RoxoSaborMenu() {
   function addToCart(product, { size, addons = [], qty = 1, obs = "" } = {}) {
     const basePrice = size ? size.price : product.price;
     const addonsTotal = addons.reduce((s, a) => s + a.price, 0);
-    const subtotal = (basePrice + addonsTotal) * qty;
+    const itemSubtotal = (basePrice + addonsTotal) * qty;
+
     setCart((old) => [
       ...old,
       {
@@ -248,7 +223,7 @@ export default function RoxoSaborMenu() {
         addons,
         qty,
         obs,
-        subtotal,
+        subtotal: itemSubtotal,
       },
     ]);
   }
@@ -355,7 +330,7 @@ export default function RoxoSaborMenu() {
         cart,
         subtotal: Number(subtotal.toFixed(2)),
         discount: Number(discount.toFixed(2)),
-        deliveryFee: Number(deliveryInfo.price.toFixed(2)),
+        deliveryFee: Number((deliveryInfo.price || 0).toFixed(2)),
         total: Number(total.toFixed(2)),
         note,
         customer: {
@@ -370,6 +345,7 @@ export default function RoxoSaborMenu() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+
       const data = await r.json();
       if (data?.url) window.location.href = data.url;
       else alert("Não foi possível iniciar o pagamento.");
@@ -423,9 +399,7 @@ export default function RoxoSaborMenu() {
                 className="h-14 w-14 rounded-full border border-[color:var(--line)] object-cover bg-white"
               />
               <div className="flex-1">
-                <h1 className="text-lg font-semibold">
-                  {_BRAND.name} - 
-                </h1>
+                <h1 className="text-lg font-semibold">{_BRAND.name} -</h1>
                 <div className="mt-0.5 text-sm text-[color:var(--muted)]">
                   Entrega rastreável • 2.7 km • Min R$ 20,00
                 </div>
@@ -500,8 +474,8 @@ export default function RoxoSaborMenu() {
 
               {cart.length === 0 ? (
                 <div className="py-8 text-sm text-[color:var(--muted)]">
-                  Seu carrinho está vazio. Adicione itens do cardápio para
-                  finalizar o pedido.
+                  Seu carrinho está vazio. Adicione itens do cardápio para finalizar
+                  o pedido.
                 </div>
               ) : (
                 <ul className="mt-3 divide-y divide-[color:var(--line)]">
@@ -581,11 +555,11 @@ export default function RoxoSaborMenu() {
 
       <style jsx global>{`
         :root {
-          --primary: ${BRAND.colors.primary};
-          --primaryDark: ${BRAND.colors.primaryDark};
-          --accent: ${BRAND.colors.accent};
-          --bg: #f7f7fb;
-          --fg: #0f172a;
+          --primary: ${_BRAND.colors.primary};
+          --primaryDark: ${_BRAND.colors.primaryDark};
+          --accent: ${_BRAND.colors.accent};
+          --bg: ${_BRAND.colors.lightBg};
+          --fg: ${_BRAND.colors.lightFg};
           --muted: #475569;
           --line: #e5e7eb;
           --card: #ffffff;
@@ -695,7 +669,11 @@ function ItemSheet({ open, onClose, product, onConfirm, addonsList }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="h-40 w-full overflow-hidden rounded-t-3xl">
-          <SmartImg src={product.img} alt="" className="h-full w-full object-cover" />
+          <SmartImg
+            src={product.img}
+            alt=""
+            className="h-full w-full object-cover"
+          />
         </div>
 
         <div className="p-4">
@@ -725,7 +703,9 @@ function ItemSheet({ open, onClose, product, onConfirm, addonsList }) {
           <div className="mt-4">
             <div className="mb-2 text-base font-semibold">
               Turbine Seu Açaí{" "}
-              <span className="text-[color:var(--muted)]">• Escolha até 3 opções</span>
+              <span className="text-[color:var(--muted)]">
+                • Escolha até 3 opções
+              </span>
             </div>
             <div className="grid gap-2">
               {addonsList.map((o) => {
@@ -737,11 +717,17 @@ function ItemSheet({ open, onClose, product, onConfirm, addonsList }) {
                     disabled={disabled}
                     onClick={() => toggle(o.id)}
                     className={`flex w-full items-center justify-between rounded-xl border p-3 text-left
-                      ${selected ? "border-[--primary] bg-[color:var(--chip)]" : "border-[color:var(--line)] bg-white"}
+                      ${
+                        selected
+                          ? "border-[--primary] bg-[color:var(--chip)]"
+                          : "border-[color:var(--line)] bg-white"
+                      }
                       ${disabled ? "opacity-50" : ""}`}
                   >
                     <span>{o.name}</span>
-                    <span className="text-[color:var(--muted)]">{currency(o.price)}</span>
+                    <span className="text-[color:var(--muted)]">
+                      {currency(o.price)}
+                    </span>
                   </button>
                 );
               })}
@@ -892,7 +878,7 @@ function CartSummary({
           )}
         </div>
 
-        {/* 🔽 AQUI: Raspadinha / cupom entre frete e resumo */}
+        {/* Raspadinha / cupom */}
         <div className="text-sm rounded-2xl bg-[color:var(--chip)] border border-[color:var(--line)] p-3">
           <div className="font-semibold flex items-center gap-2">
             <span>🎟️</span> Raspadinha Roxo Sabor
@@ -953,3 +939,4 @@ function CartSummary({
     </div>
   );
 }
+
