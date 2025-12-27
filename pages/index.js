@@ -162,6 +162,7 @@ export default function RoxoSaborMenu() {
   const [customer, setCustomer] = useState({
     name: "",
     phone: "",
+    city: "Conselheiro Lafaiete - MG", // ✅ cidade padrão
     neighborhood: "",
     street: "",
     number: "",
@@ -266,12 +267,19 @@ export default function RoxoSaborMenu() {
 
   async function calcularFrete() {
     try {
-      if (!customer.neighborhood || !customer.street || !customer.number) {
-        alert("Preencha bairro, rua e número para calcular o frete.");
+      if (
+        !customer.city ||
+        !customer.neighborhood ||
+        !customer.street ||
+        !customer.number
+      ) {
+        alert(
+          "Preencha cidade, bairro, rua e número para calcular o frete."
+        );
         return;
       }
 
-      const fullAddress = `${customer.street}, ${customer.number} - ${customer.neighborhood}`;
+      const fullAddress = `${customer.street}, ${customer.number} - ${customer.neighborhood}, ${customer.city}`;
 
       setDeliveryInfo((old) => ({ ...old, loading: true, error: "" }));
 
@@ -311,8 +319,13 @@ export default function RoxoSaborMenu() {
         alert("Informe nome e telefone para continuar.");
         return;
       }
-      if (!customer.neighborhood || !customer.street || !customer.number) {
-        alert("Preencha bairro, rua e número para continuar.");
+      if (
+        !customer.city ||
+        !customer.neighborhood ||
+        !customer.street ||
+        !customer.number
+      ) {
+        alert("Preencha cidade, bairro, rua e número para continuar.");
         return;
       }
 
@@ -321,7 +334,7 @@ export default function RoxoSaborMenu() {
         return;
       }
 
-      const fullAddress = `${customer.street}, ${customer.number} - ${customer.neighborhood}${
+      const fullAddress = `${customer.street}, ${customer.number} - ${customer.neighborhood}, ${customer.city}${
         customer.complement ? ` (${customer.complement})` : ""
       }`;
 
@@ -824,6 +837,17 @@ function CartSummary({
         {/* Endereço */}
         <div className="grid gap-2 text-sm">
           <label className="text-[color:var(--muted)]">Endereço para entrega</label>
+
+          {/* Cidade obrigatória */}
+          <input
+            className="px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
+            placeholder="Cidade (ex.: Conselheiro Lafaiete - MG)"
+            value={customer.city}
+            onChange={(e) =>
+              setCustomer({ ...customer, city: e.target.value })
+            }
+          />
+
           <input
             className="px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
             placeholder="Bairro"
@@ -938,4 +962,3 @@ function CartSummary({
     </div>
   );
 }
-
