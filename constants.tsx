@@ -16,10 +16,10 @@ export const STORE: StoreInfo = {
   minOrder: 20.00,
   
   // Imagem da Logotipo (Ícone no topo)
-  logoUrl: "https://images.unsplash.com/photo-1623114112815-9988bc7f3730?q=80&w=100&auto=format&fit=crop", 
+  logoUrl: "https://i.imgur.com/rlRstCp.png", 
   
   // Imagem do Banner Principal (Topo da página)
-  bannerUrl: "https://images.unsplash.com/photo-1590301157890-4810ed352733?q=80&w=1200&auto=format&fit=crop"
+  bannerUrl: "https://i.imgur.com/noixE8b.jpeg"
 };
 
 export const CATEGORIES: Category[] = [
@@ -39,7 +39,7 @@ export const PRODUCTS: Product[] = [
     name: 'Açaí 330 ml + 3 complementos',
     description: 'Nossa base artesanal. Escolha até 3 acompanhamentos grátis!',
     price: 24.99,
-    image: 'https://images.unsplash.com/photo-1590301157890-4810ed352733?q=80&w=800&auto=format&fit=crop',
+    image: 'https://i.imgur.com/LraZ9bq.jpeg',
     category: 'cup',
     isPopular: true
   },
@@ -48,7 +48,7 @@ export const PRODUCTS: Product[] = [
     name: 'Açaí Gourmet Nutella',
     description: 'Nutella original, Leite Ninho em pó e morangos frescos selecionados.',
     price: 28.90,
-    image: 'https://images.unsplash.com/photo-1623114112815-9988bc7f3730?q=80&w=800&auto=format&fit=crop',
+    image: 'https://i.imgur.com/LraZ9bq.jpeg',
     category: 'cup'
   },
   {
@@ -56,7 +56,7 @@ export const PRODUCTS: Product[] = [
     name: 'Combo Casal Roxo',
     description: '2 Açaís de 500ml completos. A combinação perfeita para dividir.',
     price: 49.90,
-    image: 'https://images.unsplash.com/photo-1580915411954-282cb1b0d780?q=80&w=800&auto=format&fit=crop',
+    image: 'https://i.imgur.com/noixE8b.jpeg',
     category: 'combos'
   },
   {
@@ -64,7 +64,7 @@ export const PRODUCTS: Product[] = [
     name: 'Copo da Felicidade',
     description: 'Camadas de açaí, mousse de maracujá, raspas de chocolate e muito sabor.',
     price: 32.90,
-    image: 'https://images.unsplash.com/photo-1563805042-7684c019e1cb?q=80&w=800&auto=format&fit=crop',
+    image: 'https://i.imgur.com/noixE8b.jpeg',
     category: 'promos',
     isPopular: true
   }
