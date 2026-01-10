@@ -1,0 +1,964 @@
+// pages/index.js
+import React, { useMemo, useState, useEffect } from "react";
+import { useRouter } from "next/router";
+
+/* ===== DEFAULTS (ÚNICA fonte de verdade) ===== */
+const BRAND = {
+  name: "Roxo Sabor",
+  logoText: "ROXO SABOR",
+  colors: {
+    primary: "#6D28D9",
+    primaryDark: "#4C1D95",
+    accent: "#22C55E",
+    lightBg: "#f7f7fb",
+    lightFg: "#0f172a",
+    cardDark: "#121212",
+    cardLight: "#ffffff",
+  },
+};
+
+const STORE = {
+  instagram: "@roxo._sabor",
+  deliveryHours: "Todos os dias, 09hrs às 21hrs",
+  bannerUrl: "/banner.jpg",
+  logoUrl: "/logoroxo.png",
+  raspadinhaCopy:
+    "Raspou, achou, ganhou! Digite seu código para validar seu prêmio.",
+};
+
+const COUPONS = {
+  ROXO10: { type: "percent", value: 10, label: "10% de desconto aplicado" },
+  FRETEGRATIS: { type: "msg", label: "Frete grátis nesta compra!" },
+  ADICIONAL: { type: "msg", label: "Um adicional grátis no próximo açaí!" },
+};
+
+const CATEGORIES = [
+  { id: "promos", name: "Promoções" },
+  { id: "acai", name: "Açaí no Copo" },
+  { id: "combos", name: "Combos" },
+  { id: "adicionais", name: "Adicionais" },
+];
+
+const ADDONS = [
+  { id: "leiteNinho", name: "Leite Ninho", price: 0 },
+  { id: "nutella", name: "Nutella", price: 0 },
+  { id: "morango", name: "Morango", price: 0 },
+  { id: "banana", name: "Banana", price: 0 },
+  { id: "granola", name: "Granola", price: 0 },
+  { id: "leiteCondensado", name: "Leite Condensado", price: 0 },
+];
+
+const PRODUCTS = [
+  {
+    id: "promo-999",
+    category: "promos",
+    name: "PROMO • 330 ml",
+    desc: "Açaí 330 ml com 1 adicional simples.",
+    price: 1,
+    img: "/acai330.jpg",
+    tags: ["promo", "popular"],
+  },
+  {
+    id: "acai-330",
+    category: "acai",
+    name: "Açaí 330 ml + 3 complementos grátis",
+    desc: "Escolha até 3 acompanhamentos grátis!",
+    price: 24.99,
+    sizes: [
+      { code: "330", label: "330 ml", price: 24.99 },
+      { code: "500", label: "500 ml", price: 25.99 },
+      { code: "700", label: "700 ml", price: 32.99 },
+    ],
+    img: "/prod-acai.jpg",
+    tags: ["popular"],
+  },
+  {
+    id: "acai-gourmet",
+    category: "acai",
+    name: "Açaí Gourmet",
+    desc: "Com Nutella, Ninho e morangos frescos.",
+    price: 24.9,
+    img: "/prod-acai2.jpg",
+    tags: ["gourmet"],
+  },
+  {
+    id: "combo-duo",
+    category: "combos",
+    name: "Combo DUO (2 x 500 ml)",
+    desc: "2 copos de 500 ml + 2 adicionais cada.",
+    price: 36.9,
+    img: "/prod-acai2.jpg",
+    tags: ["família"],
+  },
+  ...ADDONS.map((a) => ({
+    id: `addon-${a.id}`,
+    category: "adicionais",
+    name: a.name,
+    desc: "Adicional avulso",
+    price: a.price,
+    img: "/addon.jpg",
+  })),
+];
+
+const currency = (n) =>
+  n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+/* Placeholder inline (sempre existe) */
+const PLACEHOLDER =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="120">
+       <rect width="100%" height="100%" fill="#f1f5f9"/>
+       <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
+             font-family="sans-serif" font-size="12" fill="#94a3b8">sem imagem</text>
+     </svg>`
+  );
+
+/* Imagem com normalização + fallback robusto */
+function SmartImg({ src, alt = "", className = "", style = {} }) {
+  const [s, setS] = React.useState(src || "");
+  useEffect(() => setS(src || ""), [src]);
+
+  const normalize = (url) => {
+    if (!url || url === "undefined" || url === "null") return PLACEHOLDER;
+    if (url.startsWith("data:")) return url;
+    if (url.startsWith("http://")) return url.replace("http://", "https://");
+    if (url.startsWith("https://")) return url;
+    return url.startsWith("/") ? url : `/${url}`;
+  };
+
+  return (
+    <img
+      src={normalize(s)}
+      alt={alt}
+      className={className}
+      style={style}
+      loading="lazy"
+      decoding="async"
+      onError={(e) => {
+        e.currentTarget.src = PLACEHOLDER;
+      }}
+    />
+  );
+}
+
+/* ============================ Página ============================ */
+export default function RoxoSaborMenu() {
+  const router = useRouter();
+
+  // ✅ SEMPRE usa os dados do código (sem Admin/localStorage)
+  const _BRAND = BRAND;
+  const _STORE = STORE;
+  const _CATEGORIES = CATEGORIES;
+  const _ADDONS = ADDONS;
+  const _PRODUCTS = PRODUCTS;
+  const _COUPONS = COUPONS;
+
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("acai");
+  const [cart, setCart] = useState([]);
+  const [note, setNote] = useState("");
+
+  const [customer, setCustomer] = useState({
+    name: "",
+    phone: "",
+    city: "Conselheiro Lafaiete - MG", // ✅ cidade padrão
+    neighborhood: "",
+    street: "",
+    number: "",
+    complement: "",
+  });
+
+  const [couponCode, setCouponCode] = useState("");
+  const [couponInfo, setCouponInfo] = useState(null);
+
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetProduct, setSheetProduct] = useState(null);
+
+  const [deliveryInfo, setDeliveryInfo] = useState({
+    distanciaKm: null,
+    price: 0,
+    loading: false,
+    error: "",
+  });
+
+  useEffect(() => {
+    if (router.query.pago === "sucesso") {
+      alert("✅ Pedido confirmado! Você receberá o resumo no Telegram.");
+    }
+  }, [router.query.pago]);
+
+  const filtered = useMemo(
+    () =>
+      _PRODUCTS.filter(
+        (p) =>
+          (category ? p.category === category : true) &&
+          (query
+            ? (p.name + " " + (p.desc || ""))
+                .toLowerCase()
+                .includes(query.toLowerCase())
+            : true)
+      ),
+    [_PRODUCTS, category, query]
+  );
+
+  const subtotal = cart.reduce((s, i) => s + i.subtotal, 0);
+  const discount =
+    couponInfo?.type === "percent" ? (subtotal * couponInfo.value) / 100 : 0;
+
+  const total = Math.max(0, subtotal - discount + (deliveryInfo.price || 0));
+
+  function addToCart(product, { size, addons = [], qty = 1, obs = "" } = {}) {
+    const basePrice = size ? size.price : product.price;
+    const addonsTotal = addons.reduce((s, a) => s + a.price, 0);
+    const itemSubtotal = (basePrice + addonsTotal) * qty;
+
+    setCart((old) => [
+      ...old,
+      {
+        id: `${product.id}-${Date.now()}`,
+        productId: product.id,
+        name: product.name,
+        size: size || null,
+        addons,
+        qty,
+        obs,
+        subtotal: itemSubtotal,
+      },
+    ]);
+  }
+
+  function removeFromCart(id) {
+    setCart((old) => old.filter((i) => i.id !== id));
+  }
+
+  function clearCart() {
+    setCart([]);
+    setNote("");
+    setDeliveryInfo({
+      distanciaKm: null,
+      price: 0,
+      loading: false,
+      error: "",
+    });
+    setCouponInfo(null);
+    setCouponCode("");
+  }
+
+  // cupom (incluindo frete grátis)
+  function applyCoupon() {
+    const code = couponCode.trim().toUpperCase();
+    const found = _COUPONS[code];
+
+    if (!found) {
+      setCouponInfo({ type: "msg", label: "Código inválido ou já utilizado." });
+      return;
+    }
+
+    setCouponInfo({ ...found, code });
+
+    if (code === "FRETEGRATIS") {
+      setDeliveryInfo((prev) => ({
+        ...prev,
+        price: 0,
+      }));
+    }
+  }
+
+  async function calcularFrete() {
+    try {
+      if (
+        !customer.city ||
+        !customer.neighborhood ||
+        !customer.street ||
+        !customer.number
+      ) {
+        alert(
+          "Preencha cidade, bairro, rua e número para calcular o frete."
+        );
+        return;
+      }
+
+      const fullAddress = `${customer.street}, ${customer.number} - ${customer.neighborhood}, ${customer.city}`;
+
+      setDeliveryInfo((old) => ({ ...old, loading: true, error: "" }));
+
+      const resp = await fetch("/api/calculate-distance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: fullAddress }),
+      });
+
+      const data = await resp.json();
+
+      if (!resp.ok) throw new Error(data.error || "Erro ao calcular frete");
+
+      setDeliveryInfo({
+        distanciaKm: Number(data.distanciaKm),
+        price: Number(data.price),
+        loading: false,
+        error: "",
+      });
+    } catch (err) {
+      console.error(err);
+      setDeliveryInfo({
+        distanciaKm: null,
+        price: 0,
+        loading: false,
+        error: "Não foi possível calcular o frete.",
+      });
+      alert("Não foi possível calcular o frete. Confira o endereço.");
+    }
+  }
+
+  async function checkoutMP() {
+    try {
+      if (!cart.length) return;
+
+      if (!customer.name || !customer.phone) {
+        alert("Informe nome e telefone para continuar.");
+        return;
+      }
+      if (
+        !customer.city ||
+        !customer.neighborhood ||
+        !customer.street ||
+        !customer.number
+      ) {
+        alert("Preencha cidade, bairro, rua e número para continuar.");
+        return;
+      }
+
+      if (deliveryInfo.distanciaKm == null) {
+        alert("Calcule o frete automaticamente antes de finalizar o pedido.");
+        return;
+      }
+
+      const fullAddress = `${customer.street}, ${customer.number} - ${customer.neighborhood}, ${customer.city}${
+        customer.complement ? ` (${customer.complement})` : ""
+      }`;
+
+      const body = {
+        cart,
+        subtotal: Number(subtotal.toFixed(2)),
+        discount: Number(discount.toFixed(2)),
+        deliveryFee: Number((deliveryInfo.price || 0).toFixed(2)),
+        total: Number(total.toFixed(2)),
+        note,
+        customer: {
+          ...customer,
+          address: fullAddress,
+        },
+        couponCode: couponInfo?.code || "",
+      };
+
+      const r = await fetch("/api/create-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      const data = await r.json();
+      if (data?.url) window.location.href = data.url;
+      else alert("Não foi possível iniciar o pagamento.");
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao iniciar pagamento.");
+    }
+  }
+
+  function openSheet(p) {
+    setSheetProduct(p);
+    setSheetOpen(true);
+  }
+
+  return (
+    <div className="min-h-screen text-[15px] bg-[--bg] text-[--fg]">
+      {/* HEADER */}
+      <header className="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-[color:var(--line)]">
+        <div className="max-w-md mx-auto px-4 py-3 flex items-center gap-3">
+          <div className="mx-auto text-center">
+            <div className="text-sm text-[color:var(--muted)]">{_BRAND.name}</div>
+            <div className="text-xs text-[color:var(--muted)]">
+              {_STORE.deliveryHours}
+            </div>
+          </div>
+          <a
+            href="#carrinho"
+            className="px-3 py-1.5 rounded-xl bg-[--primary] text-white hover:opacity-90 transition"
+          >
+            Carrinho ({cart.length})
+          </a>
+        </div>
+      </header>
+
+      {/* HERO */}
+      <section className="max-w-md mx-auto px-4 pt-4">
+        <div className="rounded-3xl bg-white p-0 shadow-md border border-[color:var(--line)] overflow-hidden">
+          <div className="h-36 w-full">
+            <SmartImg
+              src={_STORE.bannerUrl}
+              alt="Banner"
+              className="h-full w-full object-cover"
+            />
+          </div>
+
+          <div className="px-4 py-4">
+            <div className="flex items-center gap-3">
+              <SmartImg
+                src={_STORE.logoUrl}
+                alt="Logo"
+                className="h-14 w-14 rounded-full border border-[color:var(--line)] object-cover bg-white"
+              />
+              <div className="flex-1">
+                <h1 className="text-lg font-semibold">{_BRAND.name} -</h1>
+                <div className="mt-0.5 text-sm text-[color:var(--muted)]">
+                  Entrega rastreável • 2.7 km • Min R$ 20,00
+                </div>
+                <div className="mt-1 text-sm">⭐ 4,9 (23 avaliações)</div>
+              </div>
+            </div>
+
+            <div className="mt-3 rounded-xl bg-[color:var(--chip)] p-2 text-center text-sm text-[color:var(--muted)]">
+              Loja fechada • Abre amanhã às 09:00
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* BUSCA / CATEGORIAS */}
+      <section className="max-w-md mx-auto px-4 pt-4">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Buscar no cardápio…"
+          className="w-full px-4 py-3 rounded-2xl bg-white border border-[color:var(--line)] outline-none shadow-sm"
+        />
+
+        <div className="mt-3 flex flex-wrap gap-8">
+          {_CATEGORIES.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => setCategory(c.id)}
+              className={`px-0 py-1.5 border-b-2 -mb-px text-sm ${
+                category === c.id
+                  ? "border-[--primary] text-[--primary]"
+                  : "border-transparent text-[color:var(--muted)] hover:text-[--primary]"
+              }`}
+            >
+              {c.name}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* LISTA DE PRODUTOS */}
+      <main className="max-w-md mx-auto px-2 pb-6">
+        <h2 className="px-2 py-3 text-xl font-semibold">Monte Seu Açaí</h2>
+        <div className="rounded-2xl bg-white border border-[color:var(--line)] shadow-sm">
+          {filtered.map((p, idx) => (
+            <ProductRow
+              key={p.id}
+              product={p}
+              first={idx === 0}
+              onClick={() => openSheet(p)}
+            />
+          ))}
+        </div>
+      </main>
+
+      {/* CARRINHO */}
+      <section id="carrinho" className="max-w-md mx-auto px-4 pb-12">
+        <div className="rounded-2xl overflow-hidden border border-[color:var(--line)] bg-white shadow-lg">
+          <div className="grid md:grid-cols-[2fr_1fr] gap-0">
+            <div className="p-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold tracking-tight">Seu pedido</h2>
+                {cart.length > 0 && (
+                  <button
+                    onClick={clearCart}
+                    className="text-sm text-[color:var(--muted)] hover:opacity-100"
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+
+              {cart.length === 0 ? (
+                <div className="py-8 text-sm text-[color:var(--muted)]">
+                  Seu carrinho está vazio. Adicione itens do cardápio para finalizar
+                  o pedido.
+                </div>
+              ) : (
+                <ul className="mt-3 divide-y divide-[color:var(--line)]">
+                  {cart.map((i) => (
+                    <li key={i.id} className="py-3 flex gap-3 items-start">
+                      <div className="w-10 h-10 rounded-lg bg-[color:var(--chip)] grid place-items-center">
+                        🍧
+                      </div>
+                      <div className="grow">
+                        <div className="font-medium leading-tight">
+                          {i.name}
+                          {i.size && (
+                            <span className="text-[color:var(--muted)]">
+                              {" "}
+                              ({i.size.label})
+                            </span>
+                          )}
+                          {i.qty && (
+                            <span className="text-[color:var(--muted)]">
+                              {" "}
+                              × {i.qty}
+                            </span>
+                          )}
+                        </div>
+                        {i.addons?.length > 0 && (
+                          <div className="text-xs text-[color:var(--muted)]">
+                            Adicionais: {i.addons.map((a) => a.name).join(", ")}
+                          </div>
+                        )}
+                        {i.obs && (
+                          <div className="text-xs text-[color:var(--muted)]">
+                            Obs: {i.obs}
+                          </div>
+                        )}
+                        <div className="text-sm mt-1">{currency(i.subtotal)}</div>
+                      </div>
+                      <button
+                        onClick={() => removeFromCart(i.id)}
+                        className="px-2 py-1 rounded-lg border border-[color:var(--line)] hover:bg-[color:var(--chip)] text-xs"
+                      >
+                        remover
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <CartSummary
+              subtotal={subtotal}
+              discount={discount}
+              total={total}
+              note={note}
+              setNote={setNote}
+              customer={customer}
+              setCustomer={setCustomer}
+              checkoutMP={checkoutMP}
+              deliveryInfo={deliveryInfo}
+              calcularFrete={calcularFrete}
+              couponCode={couponCode}
+              setCouponCode={setCouponCode}
+              couponInfo={couponInfo}
+              applyCoupon={applyCoupon}
+              raspadinhaCopy={_STORE.raspadinhaCopy}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* FOOTER */}
+      <footer className="py-10 text-center text-xs text-[color:var(--muted)]">
+        <div>
+          {_BRAND.name} • {_STORE.deliveryHours}
+        </div>
+        <div>Feito com ❤️ para vender mais açaí</div>
+      </footer>
+
+      <style jsx global>{`
+        :root {
+          --primary: ${_BRAND.colors.primary};
+          --primaryDark: ${_BRAND.colors.primaryDark};
+          --accent: ${_BRAND.colors.accent};
+          --bg: ${_BRAND.colors.lightBg};
+          --fg: ${_BRAND.colors.lightFg};
+          --muted: #475569;
+          --line: #e5e7eb;
+          --card: #ffffff;
+          --chip: #f1f5f9;
+        }
+        html,
+        body {
+          background: var(--bg);
+          color: var(--fg);
+        }
+      `}</style>
+
+      <ItemSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        product={sheetProduct}
+        addonsList={_ADDONS}
+        onConfirm={(payload) => {
+          if (!sheetProduct) return;
+          addToCart(sheetProduct, payload);
+          setSheetOpen(false);
+        }}
+      />
+    </div>
+  );
+}
+
+/* ======================= Componentes ======================= */
+function ProductRow({ product, onClick, first }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full px-4 py-4 text-left block ${
+        !first ? "border-t border-[color:var(--line)]" : ""
+      }`}
+    >
+      {product.tags?.includes("popular") && (
+        <span className="mb-2 inline-block rounded-full bg-[color:var(--chip)] border border-[color:var(--line)] px-2 py-0.5 text-xs text-[color:var(--muted)]">
+          O mais pedido
+        </span>
+      )}
+      <div className="flex gap-3">
+        <div className="flex-1">
+          <h3 className="font-semibold leading-snug">{product.name}</h3>
+          {product.desc && (
+            <p className="mt-1 line-clamp-2 text-sm text-[color:var(--muted)]">
+              {product.desc}
+            </p>
+          )}
+          <div className="mt-2 font-semibold">{currency(product.price)}</div>
+        </div>
+        <SmartImg
+          src={product.img}
+          alt={product.name}
+          className="h-24 w-24 rounded-2xl object-cover border border-[color:var(--line)]"
+        />
+      </div>
+    </button>
+  );
+}
+
+function ItemSheet({ open, onClose, product, onConfirm, addonsList }) {
+  const [qty, setQty] = useState(1);
+  const [noteItem, setNoteItem] = useState("");
+  const [selectedSize, setSelectedSize] = useState(null);
+  const [picked, setPicked] = useState(new Set());
+
+  useEffect(() => {
+    if (product?.sizes?.length) setSelectedSize(product.sizes[0]);
+    else setSelectedSize(null);
+    setPicked(new Set());
+    setQty(1);
+    setNoteItem("");
+  }, [product]);
+
+  if (!open || !product) return null;
+
+  const MAX = 3;
+  const base = selectedSize ? selectedSize.price : product.price;
+  const addons = addonsList.filter((a) => picked.has(a.id));
+  const addonsTotal = addons.reduce((s, a) => s + a.price, 0);
+  const price = (base + addonsTotal) * qty;
+
+  function toggle(optId) {
+    setPicked((prev) => {
+      const n = new Set(prev);
+      if (n.has(optId)) n.delete(optId);
+      else {
+        if (n.size >= MAX) n.delete(n.values().next().value);
+        n.add(optId);
+      }
+      return n;
+    });
+  }
+
+  function confirm() {
+    onConfirm({ size: selectedSize, addons, qty, obs: noteItem });
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid grid-rows-[1fr_auto] bg-black/30"
+      onClick={onClose}
+    >
+      <div
+        className="mt-auto rounded-t-3xl bg-white border border-[color:var(--line)] shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="h-40 w-full overflow-hidden rounded-t-3xl">
+          <SmartImg
+            src={product.img}
+            alt=""
+            className="h-full w-full object-cover"
+          />
+        </div>
+
+        <div className="p-4">
+          <h2 className="text-xl font-semibold">{product.name}</h2>
+          <div className="mt-1 text-[color:var(--muted)]">
+            {product.desc || "Monte como preferir"}
+          </div>
+
+          {product.sizes?.length ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {product.sizes.map((s) => (
+                <button
+                  key={s.code}
+                  onClick={() => setSelectedSize(s)}
+                  className={`px-3 py-1.5 rounded-xl border text-sm ${
+                    selectedSize?.code === s.code
+                      ? "border-[--primary] bg-[color:var(--chip)]"
+                      : "border-[color:var(--line)] bg-white"
+                  }`}
+                >
+                  {s.label} • {currency(s.price)}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="mt-4">
+            <div className="mb-2 text-base font-semibold">
+              Turbine Seu Açaí{" "}
+              <span className="text-[color:var(--muted)]">
+                • Escolha até 3 opções
+              </span>
+            </div>
+            <div className="grid gap-2">
+              {addonsList.map((o) => {
+                const selected = picked.has(o.id);
+                const disabled = !selected && picked.size >= 3;
+                return (
+                  <button
+                    key={o.id}
+                    disabled={disabled}
+                    onClick={() => toggle(o.id)}
+                    className={`flex w-full items-center justify-between rounded-xl border p-3 text-left
+                      ${
+                        selected
+                          ? "border-[--primary] bg-[color:var(--chip)]"
+                          : "border-[color:var(--line)] bg-white"
+                      }
+                      ${disabled ? "opacity-50" : ""}`}
+                  >
+                    <span>{o.name}</span>
+                    <span className="text-[color:var(--muted)]">
+                      {currency(o.price)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <div className="mb-2 text-base font-semibold">Alguma observação?</div>
+            <textarea
+              value={noteItem}
+              onChange={(e) => setNoteItem(e.target.value)}
+              maxLength={140}
+              placeholder="Ex: sem granola, pouco leite condensado"
+              className="h-24 w-full rounded-2xl bg-white border border-[color:var(--line)] p-3 outline-none"
+            />
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 flex items-center gap-3 border-t border-[color:var(--line)] bg-white p-4">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setQty((q) => Math.max(1, q - 1))}
+              className="grid h-9 w-9 place-items-center rounded-full border border-[color:var(--line)]"
+            >
+              −
+            </button>
+            <div className="w-6 text-center font-semibold">{qty}</div>
+            <button
+              onClick={() => setQty((q) => q + 1)}
+              className="grid h-9 w-9 place-items-center rounded-full border border-[color:var(--line)]"
+            >
+              +
+            </button>
+          </div>
+          <button
+            className="flex-1 rounded-2xl bg-[--primary] py-3 text-center font-semibold text-white hover:opacity-90"
+            onClick={confirm}
+          >
+            Adicionar — {currency(price)}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CartSummary({
+  subtotal,
+  discount,
+  total,
+  note,
+  setNote,
+  customer,
+  setCustomer,
+  checkoutMP,
+  deliveryInfo,
+  calcularFrete,
+  couponCode,
+  setCouponCode,
+  couponInfo,
+  applyCoupon,
+  raspadinhaCopy,
+}) {
+  return (
+    <div className="p-4 border-t md:border-t-0 md:border-l border-[color:var(--line)] bg-white">
+      <div className="grid gap-3">
+        <div className="grid gap-1 text-sm">
+          <label className="text-[color:var(--muted)]">Observações do pedido</label>
+          <textarea
+            rows={3}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Ex.: Sem granola, pouco leite condensado…"
+            className="w-full px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
+          />
+        </div>
+
+        {/* Seus dados */}
+        <div className="grid gap-2 text-sm pt-2">
+          <label className="text-[color:var(--muted)]">Seus dados</label>
+          <input
+            className="px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
+            placeholder="Seu nome"
+            value={customer.name}
+            onChange={(e) => setCustomer({ ...customer, name: e.target.value })}
+          />
+          <input
+            className="px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
+            placeholder="Telefone (WhatsApp)"
+            value={customer.phone}
+            onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
+          />
+        </div>
+
+        {/* Endereço */}
+        <div className="grid gap-2 text-sm">
+          <label className="text-[color:var(--muted)]">Endereço para entrega</label>
+
+          {/* Cidade obrigatória */}
+          <input
+            className="px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
+            placeholder="Cidade (ex.: Conselheiro Lafaiete - MG)"
+            value={customer.city}
+            onChange={(e) =>
+              setCustomer({ ...customer, city: e.target.value })
+            }
+          />
+
+          <input
+            className="px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
+            placeholder="Bairro"
+            value={customer.neighborhood}
+            onChange={(e) =>
+              setCustomer({ ...customer, neighborhood: e.target.value })
+            }
+          />
+          <input
+            className="px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
+            placeholder="Rua / Avenida"
+            value={customer.street}
+            onChange={(e) => setCustomer({ ...customer, street: e.target.value })}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              className="px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
+              placeholder="Número"
+              value={customer.number}
+              onChange={(e) => setCustomer({ ...customer, number: e.target.value })}
+            />
+            <input
+              className="px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
+              placeholder="Complemento (opcional)"
+              value={customer.complement}
+              onChange={(e) =>
+                setCustomer({ ...customer, complement: e.target.value })
+              }
+            />
+          </div>
+        </div>
+
+        {/* Frete */}
+        <div className="grid gap-2 text-sm">
+          <button
+            type="button"
+            onClick={calcularFrete}
+            className="px-3 py-2 rounded-xl bg-[--primary] text-white text-sm hover:opacity-90 disabled:opacity-60"
+            disabled={deliveryInfo.loading}
+          >
+            {deliveryInfo.loading ? "Calculando frete..." : "Calcular frete automaticamente"}
+          </button>
+          {deliveryInfo.distanciaKm != null && (
+            <div className="text-xs text-[color:var(--muted)]">
+              Distância estimada: {deliveryInfo.distanciaKm} km • Frete{" "}
+              {currency(deliveryInfo.price)}
+            </div>
+          )}
+          {deliveryInfo.error && (
+            <div className="text-xs text-red-500">{deliveryInfo.error}</div>
+          )}
+        </div>
+
+        {/* Raspadinha / cupom */}
+        <div className="text-sm rounded-2xl bg-[color:var(--chip)] border border-[color:var(--line)] p-3">
+          <div className="font-semibold flex items-center gap-2">
+            <span>🎟️</span> Raspadinha Roxo Sabor
+          </div>
+          <p className="text-[color:var(--muted)] mt-1">{raspadinhaCopy}</p>
+          <div className="mt-2 flex gap-2">
+            <input
+              value={couponCode}
+              onChange={(e) => setCouponCode(e.target.value)}
+              placeholder="Digite seu código"
+              className="flex-1 px-3 py-2 rounded-xl bg-white border border-[color:var(--line)] outline-none"
+            />
+            <button
+              onClick={applyCoupon}
+              className="px-3 py-2 rounded-xl bg-[--primary] text-white hover:opacity-90"
+            >
+              Validar
+            </button>
+          </div>
+          {couponInfo && (
+            <div className="mt-2 text-xs px-3 py-2 rounded-lg border border-[color:var(--line)] bg-white">
+              ✅ {couponInfo.label}
+            </div>
+          )}
+        </div>
+
+        {/* Resumo de valores */}
+        <div className="flex items-center justify-between text-sm pt-2">
+          <span className="text-[color:var(--muted)]">Subtotal</span>
+          <span>{currency(subtotal)}</span>
+        </div>
+        {discount > 0 && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-[color:var(--muted)]">Desconto</span>
+            <span>- {currency(discount)}</span>
+          </div>
+        )}
+        {deliveryInfo.price > 0 && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-[color:var(--muted)]">Frete</span>
+            <span>{currency(deliveryInfo.price)}</span>
+          </div>
+        )}
+        <div className="flex items-center justify-between text-base font-semibold border-t border-[color:var(--line)] pt-2">
+          <span>Total</span>
+          <span>{currency(total)}</span>
+        </div>
+
+        {/* Botão de pagamento */}
+        <button
+          onClick={checkoutMP}
+          className="mt-2 px-4 py-3 rounded-2xl text-center font-medium bg-[--primary] text-white hover:opacity-90 disabled:opacity-50"
+          disabled={subtotal <= 0}
+        >
+          Pagar com Cartão ou Saldo (Mercado Pago)
+        </button>
+      </div>
+    </div>
+  );
+}
