@@ -1,0 +1,6 @@
+
+{
+  "name": "Roxo Sabor - Açaí Premium",
+  "description": "A fluid and modern delivery interface for a premium açaí shop, featuring smooth transitions and a vibrant purple-themed design.",
+  "requestFramePermissions": ["geolocation"]
+}
