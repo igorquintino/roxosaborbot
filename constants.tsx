@@ -24,7 +24,7 @@ export const PRODUCTS: Product[] = [
     name: 'Açaí 330 ml + 3 complementos grátis',
     description: 'Escolha até 3 acompanhamentos grátis para turbinar seu açaí!',
     price: 24.99,
-    image: 'https://picsum.photos/seed/acai1/400/300',
+    image: './prod-acai.png',
     category: 'cup',
     isPopular: true
   },
@@ -33,7 +33,7 @@ export const PRODUCTS: Product[] = [
     name: 'Açaí Gourmet',
     description: 'Com Nutella, Ninho e morangos frescos picados na hora.',
     price: 24.90,
-    image: 'https://picsum.photos/seed/acai2/400/300',
+    image: './prod-acai.png',
     category: 'cup'
   },
   {
@@ -41,7 +41,7 @@ export const PRODUCTS: Product[] = [
     name: 'Combo Família',
     description: '2 Açaís de 500ml + 5 complementos cada.',
     price: 45.00,
-    image: 'https://picsum.photos/seed/combo1/400/300',
+    image: './prod-acai.png',
     category: 'combos'
   },
   {
