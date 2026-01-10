@@ -17,6 +17,11 @@ const App: React.FC = () => {
   const [isPaying, setIsPaying] = useState(false);
   const [note, setNote] = useState('');
 
+  // Estados do Cupom / Raspadinha
+  const [couponCode, setCouponCode] = useState('');
+  const [couponStatus, setCouponStatus] = useState<{msg: string, type: 'success' | 'error' | null}>({msg: '', type: null});
+  const [appliedDiscount, setAppliedDiscount] = useState<{type: string, value: number} | null>(null);
+
   const [customer, setCustomer] = useState<CustomerData>({
     name: '', whatsapp: '', city: 'Conselheiro Lafaiete - MG',
     neighborhood: '', street: '', number: '', complement: ''
@@ -30,8 +35,20 @@ const App: React.FC = () => {
     cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
   , [cart]);
 
-  const deliveryFee = shipping.fee || 0;
-  const finalTotal = itemsTotal + deliveryFee;
+  // Cálculo do Desconto
+  const discountValue = useMemo(() => {
+    if (!appliedDiscount) return 0;
+    if (appliedDiscount.type === 'percent') return (itemsTotal * appliedDiscount.value) / 100;
+    return 0;
+  }, [itemsTotal, appliedDiscount]);
+
+  // Regra de Frete Grátis via Cupom
+  const deliveryFee = useMemo(() => {
+    if (appliedDiscount?.type === 'freeShipping') return 0;
+    return shipping.fee || 0;
+  }, [shipping.fee, appliedDiscount]);
+
+  const finalTotal = itemsTotal - discountValue + deliveryFee;
 
   const addToCart = (product: Product) => {
     setCart(prev => {
@@ -61,6 +78,27 @@ const App: React.FC = () => {
     }));
   };
 
+  const handleValidateCoupon = async () => {
+    if (!couponCode) return;
+    try {
+      const res = await fetch('/api/validate-coupon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: couponCode.toUpperCase() })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setCouponStatus({ msg: `✅ ${data.coupon.label}`, type: 'success' });
+        setAppliedDiscount({ type: data.coupon.type, value: data.coupon.value || 0 });
+      } else {
+        setCouponStatus({ msg: `❌ ${data.message}`, type: 'error' });
+        setAppliedDiscount(null);
+      }
+    } catch (err) {
+      setCouponStatus({ msg: 'Erro ao validar', type: 'error' });
+    }
+  };
+
   const handleCreatePayment = async () => {
     if (!customer.name || !customer.whatsapp || !shipping.calculated) {
       alert("Preencha todos os dados antes de pagar.");
@@ -72,7 +110,7 @@ const App: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          cart, subtotal: itemsTotal, deliveryFee, total: finalTotal, customer, note
+          cart, subtotal: itemsTotal, discount: discountValue, deliveryFee, total: finalTotal, customer, note, couponCode: couponCode.toUpperCase()
         })
       });
       const data = await res.json();
@@ -269,6 +307,37 @@ const App: React.FC = () => {
                       </div>
                     ))}
                   </div>
+
+                  {/* RASPADINHA / CUPOM */}
+                  <div className="bg-gradient-to-br from-violet-50 to-fuchsia-50 p-6 rounded-[32px] border border-violet-100 space-y-4 shadow-sm">
+                    <div className="flex items-center gap-3 text-violet-800">
+                      <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
+                        <Gift size={20} className="text-violet-600" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="font-black text-sm uppercase tracking-tight">Raspadinha Premiada</span>
+                        <span className="text-[10px] font-bold text-violet-500">DIGITE SEU CÓDIGO</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={couponCode}
+                        onChange={(e) => {setCouponCode(e.target.value); setCouponStatus({msg:'', type:null});}}
+                        placeholder="CÓDIGO AQUI"
+                        className="flex-1 bg-white border border-violet-200 rounded-2xl px-5 py-3 text-sm font-bold placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-400 transition-all uppercase"
+                      />
+                      <button onClick={handleValidateCoupon} className="bg-violet-600 text-white px-6 rounded-2xl text-sm font-black shadow-lg shadow-violet-200 active:scale-95 transition-all">
+                        OK
+                      </button>
+                    </div>
+                    {couponStatus.msg && (
+                      <p className={`text-xs font-bold text-center ${couponStatus.type === 'success' ? 'text-green-600' : 'text-rose-600'}`}>
+                        {couponStatus.msg}
+                      </p>
+                    )}
+                  </div>
+
                   <div className="space-y-3">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-2">Observações</label>
                     <textarea 
@@ -314,7 +383,27 @@ const App: React.FC = () => {
 
             {cart.length > 0 && (
               <div className="p-8 bg-white border-t border-slate-100 space-y-6 shadow-[0_-20px_40px_-15px_rgba(0,0,0,0.1)]">
-                <div className="flex justify-between text-3xl font-black text-slate-900"><span>Total</span><span className="text-violet-700">R$ {finalTotal.toFixed(2)}</span></div>
+                <div className="space-y-2">
+                   <div className="flex justify-between text-slate-400 text-xs font-bold uppercase tracking-widest">
+                      <span>Subtotal</span>
+                      <span>R$ {itemsTotal.toFixed(2)}</span>
+                   </div>
+                   {discountValue > 0 && (
+                     <div className="flex justify-between text-rose-500 text-xs font-bold uppercase tracking-widest">
+                        <span>Desconto</span>
+                        <span>- R$ {discountValue.toFixed(2)}</span>
+                     </div>
+                   )}
+                   <div className="flex justify-between text-slate-400 text-xs font-bold uppercase tracking-widest">
+                      <span>Entrega</span>
+                      <span>{deliveryFee === 0 && shipping.calculated ? 'GRÁTIS' : `R$ ${deliveryFee.toFixed(2)}`}</span>
+                   </div>
+                   <div className="flex justify-between text-3xl font-black text-slate-900 pt-2">
+                      <span>Total</span>
+                      <span className="text-violet-700">R$ {finalTotal.toFixed(2)}</span>
+                   </div>
+                </div>
+
                 {cartStep === 'items' ? (
                   <button onClick={() => setCartStep('checkout')} className="w-full bg-violet-600 text-white py-5 rounded-[28px] font-black text-lg shadow-2xl shadow-violet-300 hover:bg-violet-700 transition-all">Finalizar Pedido</button>
                 ) : (
